@@ -453,11 +453,13 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     // medium may be string or array; pick first when array
     const m = (selectedCourse as any)?.medium
     const courseMedium = Array.isArray(m) ? (m[0] || '') : (m || '')
+    // Some tenants return chapter name as `chaptername` instead of `title`
+    const chapterName = (module.title || (module as any).chaptername || '') as string
     setQuizForm({
-      videoTitle: module.title || '',
+      videoTitle: chapterName,
       videoUrl: initialUrl,
       ytId: '',
-      moduleName: module.title || '',
+      moduleName: chapterName,
       topicName,
       subtopicName,
       courseName: selectedCourse?.title || '',
@@ -473,13 +475,18 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
   }
 
   const handleDocumentAction = async (module: Module) => {
-    console.log('Document button clicked for module:', module.title);
+    const moduleName = (module.title || (module as any).chaptername || '').trim();
+    console.log('Document button clicked for module:', moduleName);
     console.log('Module data:', module);
+    if (!moduleName) {
+      alert('Module name is missing. Please ensure the chapter has a name.');
+      return;
+    }
     
     try {
       console.log('Making API call to get video quiz by module name...');
       // First, get the video quiz by module name to find the ID
-      const response = await axios.get(`/vq/module/${encodeURIComponent(module.title)}`);
+      const response = await axios.get(`/vq/module/${encodeURIComponent(moduleName)}`);
       console.log('API response:', response.data);
       
       if (response.data.success && response.data.data && response.data.data.quizzes && response.data.data.quizzes.length > 0) {
@@ -505,14 +512,15 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
             videoTitle: videoQuiz.videoTitle || '',
             videoUrl: videoQuiz.videoUrl || '',
             ytId: videoQuiz.ytId || '',
-            moduleName: videoQuiz.moduleName || '',
+            // Support both default-tenant (chapterName/subName/questions) and standard fields
+            moduleName: (videoQuiz.moduleName || videoQuiz.chapterName || module.title || (module as any).chaptername || ''),
             topicName: videoQuiz.topicName || '',
             subtopicName: videoQuiz.subtopicName || '',
-            courseName: videoQuiz.courseName || '',
+            courseName: (videoQuiz.courseName || videoQuiz.subName || selectedCourse?.title || ''),
             board: videoQuiz.board || '',
-            grade: videoQuiz.grade || '',
-            medium: videoQuiz.medium || '',
-            quiz: videoQuiz.quiz || [{ ...emptyQuestion }]
+            grade: (videoQuiz.grade ?? '').toString(),
+            medium: (videoQuiz.medium ?? ''),
+            quiz: (videoQuiz.quiz || videoQuiz.questions || [{ ...emptyQuestion }])
           });
           
           // Set the module for quiz and open the dialog
@@ -1742,6 +1750,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                         topicName: quizForm.topicName?.trim() || undefined,
                         subtopicName: quizForm.subtopicName?.trim() || undefined,
                         courseName: quizForm.courseName.trim(),
+                        // Backend (default tenant) expects courseId which maps to subjectId
+                        courseId: selectedCourse._id,
                         board: quizForm.board.trim(),
                         grade: quizForm.grade.trim(),
                         medium: boardUpper === 'CBSE' ? undefined : quizForm.medium.trim(),
