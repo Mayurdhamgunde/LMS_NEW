@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const slugify = require('slugify');
 const mongoose = require('mongoose');
+const { switchTenant } = require('../utils/tenantUtils');
 
 // Helper function to get the correct model
 const getCourseModel = (tenantConnection) => {
@@ -17,50 +18,89 @@ const isValidObjectId = (id) => {
   return mongoose.Types.ObjectId.isValid(id);
 };
 
+// Helper function to map fields based on tenant
+const mapFieldsForTenant = (data, tenantId) => {
+  const mappedData = { ...data };
+  
+  // For default tenant, map 'title' field to 'subject'
+  if (tenantId === 'default') {
+    if (mappedData.title) {
+      mappedData.subject = mappedData.title;
+      delete mappedData.title;
+    }
+  }
+  
+  return mappedData;
+};
+
+// Helper function to map fields back from database for response
+const mapFieldsFromTenant = (data, tenantId) => {
+  const mappedData = { ...data };
+  
+  // For default tenant, map 'subject' field back to 'title' for response
+  if (tenantId === 'default') {
+    if (mappedData.subject) {
+      mappedData.title = mappedData.subject;
+      delete mappedData.subject;
+    }
+  }
+  
+  return mappedData;
+};
+
 // Helper function to validate course data
-const validateCourseData = (data, isUpdate = false) => {
+const validateCourseData = (data, isUpdate = false, tenantId = null) => {
   const errors = [];
+  
+  // Map fields based on tenant before validation
+  const mappedData = tenantId ? mapFieldsForTenant(data, tenantId) : data;
 
   // Required fields validation (only for create)
   if (!isUpdate) {
-    if (!data.title) errors.push('Title is required');
-    if (!data.createdBy) errors.push('CreatedBy is required');
+    // Check for title/subject based on tenant
+    if (tenantId === 'default') {
+      if (!mappedData.subject) errors.push('Subject is required');
+    } else {
+      if (!mappedData.title) errors.push('Title is required');
+    }
+    
+    if (!mappedData.createdBy) errors.push('CreatedBy is required');
   }
 
   // Validate status if provided
-  if (data.status && !['draft', 'published'].includes(data.status)) {
+  if (mappedData.status && !['draft', 'published'].includes(mappedData.status)) {
     errors.push('Invalid status. Must be one of: draft, published');
   }
 
   // Validate courseProgress if provided
-  if (typeof data.courseProgress === 'number' && (data.courseProgress < 0 || data.courseProgress > 100)) {
+  if (typeof mappedData.courseProgress === 'number' && (mappedData.courseProgress < 0 || mappedData.courseProgress > 100)) {
     errors.push('Course progress must be between 0 and 100');
   }
 
   // Validate price if provided
-  if (typeof data.price === 'number' && data.price < 0) {
+  if (typeof mappedData.price === 'number' && mappedData.price < 0) {
     errors.push('Price cannot be negative');
   }
 
   // Validate rating if provided
-  if (typeof data.rating === 'number' && (data.rating < 0 || data.rating > 5)) {
+  if (typeof mappedData.rating === 'number' && (mappedData.rating < 0 || mappedData.rating > 5)) {
     errors.push('Rating must be between 0 and 5');
   }
 
   // Validate enrolledStd if provided
-  if (typeof data.enrolledStd === 'number' && data.enrolledStd < 0) {
+  if (typeof mappedData.enrolledStd === 'number' && mappedData.enrolledStd < 0) {
     errors.push('Enrolled students cannot be negative');
   }
 
   // Validate medium array if provided
-  if (data.medium && Array.isArray(data.medium)) {
-    if (data.medium.some(m => typeof m !== 'string')) {
+  if (mappedData.medium && Array.isArray(mappedData.medium)) {
+    if (mappedData.medium.some(m => typeof m !== 'string')) {
       errors.push('All medium values must be strings');
     }
   }
 
   // Validate createdBy if provided (must be valid ObjectId)
-  if (data.createdBy && !isValidObjectId(data.createdBy)) {
+  if (mappedData.createdBy && !isValidObjectId(mappedData.createdBy)) {
     errors.push('Invalid createdBy user ID format');
   }
 
@@ -83,8 +123,8 @@ exports.createNgoCourse = async (req, res) => {
       });
     }
 
-    // Validate input data
-    const validationErrors = validateCourseData(req.body);
+    // Validate input data with tenant-specific field mapping
+    const validationErrors = validateCourseData(req.body, false, req.tenantId);
     if (validationErrors.length > 0) {
       return res.status(400).json({
         success: false,
@@ -92,28 +132,34 @@ exports.createNgoCourse = async (req, res) => {
       });
     }
 
-    // Add tenant to req.body
-    req.body.tenantId = req.tenantId;
+    // Map fields based on tenant before saving
+    const mappedData = mapFieldsForTenant(req.body, req.tenantId);
+    
+    // Add tenant to mapped data
+    mappedData.tenantId = req.tenantId;
 
     // Set default values according to schema
-    if (!req.body.courseProgress) req.body.courseProgress = 0;
-    if (!req.body.enrolledStd) req.body.enrolledStd = 0;
-    if (!req.body.rating) req.body.rating = 0;
-    if (!req.body.price) req.body.price = 0;
-    if (!req.body.status) req.body.status = 'draft';
-    if (!req.body.medium) req.body.medium = [];
+    if (!mappedData.courseProgress) mappedData.courseProgress = 0;
+    if (!mappedData.enrolledStd) mappedData.enrolledStd = 0;
+    if (!mappedData.rating) mappedData.rating = 0;
+    if (!mappedData.price) mappedData.price = 0;
+    if (!mappedData.status) mappedData.status = 'draft';
+    if (!mappedData.medium) mappedData.medium = [];
 
     // Use tenant-specific model
     const CourseModel = getCourseModel(req.tenantConnection);
 
-    // Create course
-    const course = await CourseModel.create(req.body);
+    // Create course with mapped data
+    const course = await CourseModel.create(mappedData);
+
+    // Map fields back for response
+    const responseData = mapFieldsFromTenant(course.toObject(), req.tenantId);
 
     console.log('NGO course created successfully:', course._id);
 
     res.status(201).json({
       success: true,
-      data: course,
+      data: responseData,
       message: 'Course created successfully'
     });
 
@@ -203,10 +249,11 @@ exports.getNgoCourses = async (req, res) => {
       query.createdBy = req.query.createdBy;
     }
 
-    // Search functionality
+    // Search functionality - handle field mapping for search
     if (req.query.search) {
+      const titleField = req.tenantId === 'default' ? 'subject' : 'title';
       query.$or = [
-        { title: { $regex: req.query.search, $options: 'i' } },
+        { [titleField]: { $regex: req.query.search, $options: 'i' } },
         { description: { $regex: req.query.search, $options: 'i' } },
         { board: { $regex: req.query.search, $options: 'i' } },
         { grade: { $regex: req.query.search, $options: 'i' } }
@@ -222,8 +269,10 @@ exports.getNgoCourses = async (req, res) => {
     let sortBy = {};
     if (req.query.sortBy) {
       const sortField = req.query.sortBy;
+      // Map sort field if needed
+      const mappedSortField = (sortField === 'title' && req.tenantId === 'default') ? 'subject' : sortField;
       const sortOrder = req.query.sortOrder === 'desc' ? -1 : 1;
-      sortBy[sortField] = sortOrder;
+      sortBy[mappedSortField] = sortOrder;
     } else {
       sortBy = { createdAt: -1 }; // Default sort by creation date, newest first
     }
@@ -239,6 +288,9 @@ exports.getNgoCourses = async (req, res) => {
       CourseModel.countDocuments(query)
     ]);
 
+    // Map fields back for response
+    const mappedCourses = courses.map(course => mapFieldsFromTenant(course, req.tenantId));
+
     console.log(`Found ${courses.length} courses out of ${totalCount} total`);
 
     // Calculate pagination info
@@ -248,7 +300,7 @@ exports.getNgoCourses = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: courses,
+      data: mappedCourses,
       pagination: {
         currentPage: page,
         totalPages,
@@ -324,11 +376,14 @@ exports.getNgoCourse = async (req, res) => {
       course.courseProgress = Math.round((completedCount / course.modules.length) * 100);
     }
 
-    console.log('Course found:', course.title);
+    // Map fields back for response
+    const responseData = mapFieldsFromTenant(course, req.tenantId);
+
+    console.log('Course found:', responseData.title || responseData.subject);
 
     res.status(200).json({
       success: true,
-      data: course
+      data: responseData
     });
 
   } catch (err) {
@@ -377,8 +432,8 @@ exports.updateNgoCourse = async (req, res) => {
       });
     }
 
-    // Validate input data
-    const validationErrors = validateCourseData(req.body, true);
+    // Validate input data with tenant-specific field mapping
+    const validationErrors = validateCourseData(req.body, true, req.tenantId);
     if (validationErrors.length > 0) {
       return res.status(400).json({
         success: false,
@@ -386,13 +441,16 @@ exports.updateNgoCourse = async (req, res) => {
       });
     }
 
+    // Map fields based on tenant before updating
+    const mappedData = mapFieldsForTenant(req.body, req.tenantId);
+
     // Prepare update data - exclude undefined/null values and system fields
     const updateData = {};
     const excludedFields = ['_id', 'tenantId', 'createdAt', '__v', 'slug'];
     
-    Object.keys(req.body).forEach(key => {
-      if (!excludedFields.includes(key) && req.body[key] !== undefined && req.body[key] !== null) {
-        updateData[key] = req.body[key];
+    Object.keys(mappedData).forEach(key => {
+      if (!excludedFields.includes(key) && mappedData[key] !== undefined && mappedData[key] !== null) {
+        updateData[key] = mappedData[key];
       }
     });
 
@@ -422,11 +480,14 @@ exports.updateNgoCourse = async (req, res) => {
       });
     }
 
+    // Map fields back for response
+    const responseData = mapFieldsFromTenant(updatedCourse.toObject(), req.tenantId);
+
     console.log('Successfully updated course:', updatedCourse._id);
 
     res.status(200).json({
       success: true,
-      data: updatedCourse,
+      data: responseData,
       message: 'Course updated successfully'
     });
 
@@ -498,14 +559,17 @@ exports.deleteNgoCourse = async (req, res) => {
       });
     }
 
-    console.log('Deleted course:', deletedCourse.title);
+    // Map fields back for response
+    const responseData = mapFieldsFromTenant(deletedCourse.toObject(), req.tenantId);
+
+    console.log('Deleted course:', responseData.title || responseData.subject);
 
     res.status(200).json({
       success: true,
       message: 'Course deleted successfully',
       data: {
         _id: deletedCourse._id,
-        title: deletedCourse.title
+        title: responseData.title
       }
     });
 
@@ -530,12 +594,9 @@ exports.deleteNgoCourse = async (req, res) => {
 // @desc    Public: Get all courses for tenant "ngo"
 // @route   GET /api/ngo-lms/ngo-public-courses
 // @access  Public
-
-const { switchTenant } = require('../utils/tenantUtils'); // adjust this path to match your project
-
 exports.getPublicNgoCourses = async (req, res) => {
   try {
-    const tenantId = 'ngo'; // 👈 hardcoded tenant
+    const tenantId = 'ngo'; // hardcoded tenant
 
     const tenantConnection = await switchTenant(tenantId);
 
@@ -579,10 +640,11 @@ exports.getPublicNgoCourses = async (req, res) => {
       query.rating = { $gte: parseFloat(req.query.minRating) };
     }
 
-    // Search functionality
+    // Search functionality - handle field mapping for search
     if (req.query.search) {
+      const titleField = tenantId === 'default' ? 'subject' : 'title';
       query.$or = [
-        { title: { $regex: req.query.search, $options: 'i' } },
+        { [titleField]: { $regex: req.query.search, $options: 'i' } },
         { description: { $regex: req.query.search, $options: 'i' } },
         { board: { $regex: req.query.search, $options: 'i' } },
         { grade: { $regex: req.query.search, $options: 'i' } }
@@ -598,10 +660,12 @@ exports.getPublicNgoCourses = async (req, res) => {
     let sortBy = {};
     if (req.query.sortBy) {
       const sortField = req.query.sortBy;
+      // Map sort field if needed
+      const mappedSortField = (sortField === 'title' && tenantId === 'default') ? 'subject' : sortField;
       const sortOrder = req.query.sortOrder === 'desc' ? -1 : 1;
-      sortBy[sortField] = sortOrder;
+      sortBy[mappedSortField] = sortOrder;
     } else {
-      sortBy = { rating: -1, enrolledStd: -1, createdAt: -1 }; // Updated field name
+      sortBy = { rating: -1, enrolledStd: -1, createdAt: -1 };
     }
 
     const [courses, totalCount] = await Promise.all([
@@ -614,12 +678,15 @@ exports.getPublicNgoCourses = async (req, res) => {
       CourseModel.countDocuments(query)
     ]);
 
+    // Map fields back for response
+    const mappedCourses = courses.map(course => mapFieldsFromTenant(course, tenantId));
+
     // Calculate pagination info
     const totalPages = Math.ceil(totalCount / limit);
 
     return res.status(200).json({
       success: true,
-      data: courses,
+      data: mappedCourses,
       pagination: {
         currentPage: page,
         totalPages,
@@ -667,14 +734,14 @@ exports.getPublicNgoCourse = async (req, res) => {
     const CourseModel = getCourseModel(tenantConnection);
     
     const course = await CourseModel.findOne({ 
-      _id: new mongoose.Types.ObjectId(courseId), // Explicitly create ObjectId
+      _id: new mongoose.Types.ObjectId(courseId),
       tenantId,
       status: 'published' // Only show published courses publicly
     })
     .populate('createdBy', 'name email')
     .lean();
 
-    console.log('Found course:', course); // Debug log
+    console.log('Found course:', course);
 
     if (!course) {
       return res.status(404).json({
@@ -683,9 +750,12 @@ exports.getPublicNgoCourse = async (req, res) => {
       });
     }
 
+    // Map fields back for response
+    const responseData = mapFieldsFromTenant(course, tenantId);
+
     return res.status(200).json({
       success: true,
-      data: course, 
+      data: responseData, 
     });
   } catch (error) {
     console.error('getPublicNgoCourse error:', error.message);
@@ -742,7 +812,7 @@ exports.getCourseProgress = async (req, res) => {
     }
 
     // Calculate progress
-    let progress = course.courseProgress || 0; // Updated field name
+    let progress = course.courseProgress || 0;
     if (course.modules && course.modules.length > 0) {
       const completedCount = course.modules.filter(m => m.isCompleted).length;
       progress = Math.round((completedCount / course.modules.length) * 100);
@@ -876,7 +946,7 @@ exports.enrollInCourse = async (req, res) => {
     const updatedCourse = await CourseModel.findOneAndUpdate(
       { _id: courseId, tenantId: req.tenantId },
       { 
-        $inc: { enrolledStd: 1 }, // Updated field name
+        $inc: { enrolledStd: 1 },
         $set: { updatedAt: new Date() }
       },
       { new: true, runValidators: true }
@@ -893,7 +963,7 @@ exports.enrollInCourse = async (req, res) => {
       success: true,
       data: {
         _id: updatedCourse._id,
-        enrolledStd: updatedCourse.enrolledStd // Updated field name
+        enrolledStd: updatedCourse.enrolledStd
       },
       message: 'Successfully enrolled in course'
     });
@@ -1023,8 +1093,10 @@ exports.getCoursesByCreator = async (req, res) => {
     let sortBy = { createdAt: -1 };
     if (req.query.sortBy) {
       const sortField = req.query.sortBy;
+      // Map sort field if needed
+      const mappedSortField = (sortField === 'title' && req.tenantId === 'default') ? 'subject' : sortField;
       const sortOrder = req.query.sortOrder === 'desc' ? -1 : 1;
-      sortBy = { [sortField]: sortOrder };
+      sortBy = { [mappedSortField]: sortOrder };
     }
 
     // Execute query
@@ -1038,12 +1110,15 @@ exports.getCoursesByCreator = async (req, res) => {
       CourseModel.countDocuments(query)
     ]);
 
+    // Map fields back for response
+    const mappedCourses = courses.map(course => mapFieldsFromTenant(course, req.tenantId));
+
     // Calculate pagination info
     const totalPages = Math.ceil(totalCount / limit);
 
     res.status(200).json({
       success: true,
-      data: courses,
+      data: mappedCourses,
       pagination: {
         currentPage: page,
         totalPages,
@@ -1107,10 +1182,13 @@ exports.getCourseStats = async (req, res) => {
       });
     }
 
+    // Map fields back for response
+    const mappedCourse = mapFieldsFromTenant(course, req.tenantId);
+
     // Calculate statistics
     const stats = {
       courseId: course._id,
-      title: course.title,
+      title: mappedCourse.title,
       status: course.status,
       enrolledStudents: course.enrolledStd || 0,
       rating: course.rating || 0,

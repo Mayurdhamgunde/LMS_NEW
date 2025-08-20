@@ -3,7 +3,20 @@ const mongoose = require('mongoose');
 const CourseSchema = new mongoose.Schema({
   title: {
     type: String,
-    required: true,
+    required: function() {
+      // Only required if tenantId is not 'default'
+      return this.tenantId !== 'default';
+    },
+    trim: true
+  },
+  
+  // For default tenant
+  subject: {
+    type: String,
+    required: function() {
+      // Only required if tenantId is 'default'
+      return this.tenantId === 'default';
+    },
     trim: true
   },
   description: {
@@ -47,10 +60,9 @@ const CourseSchema = new mongoose.Schema({
     trim: true
   },
   grade: {
-    type: Number,
+    type: String,
     required: function() { return this.tenantId === 'default'; },
-    min: 1,
-    max: 12
+    trim: true
   },
   medium: {
     type: [String],
@@ -86,4 +98,3 @@ CourseSchema.index({ tenantId: 1, createdBy: 1 });
 const Course = mongoose.models.Course || mongoose.model('Course', CourseSchema);
 
 module.exports = Course;
-module.exports.schema = CourseSchema;

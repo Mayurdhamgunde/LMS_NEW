@@ -272,7 +272,10 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     title: '',
     topicName: '',
     subtopicName: '',
-    videoUrl: ''
+    videoUrl: '',
+    subjectname: '',
+    board: '',
+    grade: ''
   })
 
   const [editModule, setEditModule] = useState({
@@ -534,13 +537,19 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
   }
 
   const handleAddModule = () => {
-         // Reset the add module form to ensure it's empty
-     setNewModule({
-       title: '',
-       topicName: '',
-       subtopicName: '',
-       videoUrl: ''
-     })
+    // Prefill board/grade from selected course when available
+    const prefillBoard = ((selectedCourse as any)?.board || '') as string
+    const prefillGrade = (((selectedCourse as any)?.grade ?? '') as any).toString()
+    const prefillSubject = (selectedCourse?.title || '') as string
+    setNewModule({
+      title: '',
+      topicName: '',
+      subtopicName: '',
+      videoUrl: '',
+      subjectname: prefillSubject,
+      board: prefillBoard,
+      grade: prefillGrade
+    })
     setOpenAddModuleDialog(true)
   }
 
@@ -552,7 +561,11 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     try {
       const modulePayload: any = {
         title: newModule.title,
-        courseId: selectedCourse._id // Add courseId to payload
+        courseId: selectedCourse._id, // Add courseId to payload
+        coursename: (selectedCourse?.title || newModule.subjectname || ''),
+        subjectname: (newModule.subjectname || selectedCourse?.title || ''),
+        board: (newModule.board || (selectedCourse as any)?.board || '').toString(),
+        grade: (newModule.grade || ((selectedCourse as any)?.grade ?? '')).toString()
       }
 
       // Logic to place video URL in the correct location based on user input
@@ -609,13 +622,19 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         
         fetchModules(selectedCourse._id)
         setOpenAddModuleDialog(false)
-                 // Reset add module form
-         setNewModule({
-           title: '',
-           topicName: '',
-           subtopicName: '',
-           videoUrl: ''
-         })
+        // Reset add module form
+        const prefillBoard = ((selectedCourse as any)?.board || '') as string
+        const prefillGrade = (((selectedCourse as any)?.grade ?? '') as any).toString()
+        const prefillSubject = (selectedCourse?.title || '') as string
+        setNewModule({
+          title: '',
+          topicName: '',
+          subtopicName: '',
+          videoUrl: '',
+          subjectname: prefillSubject,
+          board: prefillBoard,
+          grade: prefillGrade
+        })
       } else {
         throw new Error(res.data.message || 'Failed to add module')
       }
@@ -670,13 +689,13 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
       videoUrl = module.videos[0].videoUrl || ''
     }
     
-         // Populate the edit module form with existing data
-     setEditModule({
-       title: module.title,
+    // Populate the edit module form with existing data
+    setEditModule({
+      title: (module.title || (module as any).chaptername || ''),
        topicName: topicName,
        subtopicName: subtopicName,
        videoUrl: videoUrl
-     })
+    })
     setOpenEditModuleDialog(true)
   }
 
@@ -890,12 +909,15 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
 
   // Validation for add module form
   const isAddModuleFormValid = () => {
-    return newModule.title.trim() && newModule.videoUrl.trim()
+    return newModule.title.trim() 
+      && newModule.videoUrl.trim() 
+      && (newModule.board || (selectedCourse as any)?.board || '').toString().trim() 
+      && (newModule.grade || ((selectedCourse as any)?.grade ?? '')).toString().trim()
   }
 
   // Validation for edit module form
   const isEditModuleFormValid = () => {
-    return editModule.title.trim() && editModule.videoUrl.trim()
+    return (editModule.title || '').trim() && (editModule.videoUrl || '').trim()
   }
 
   return (
@@ -1141,7 +1163,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                     >
                       <div className="flex justify-between items-start">
                         <div>
-                          <h3 className={`font-medium ${themeClasses.text}`}>{module.title}</h3>
+                          <h3 className={`font-medium ${themeClasses.text}`}>{module.title || (module as any).chaptername}</h3>
                           <p className={`text-sm mt-1 ${themeClasses.textMuted}`}>{module.description}</p>
                         </div>
                         {user && (user.role === 'instructor' || user.role === 'admin') && (
@@ -1175,7 +1197,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                       </div>
                       
                       <div className="flex items-center mt-4 gap-4">
-                        {module.videoUrl && (
+                        {(module as any).videoUrl && (
                           <div className={`flex items-center text-sm ${themeClasses.textMuted}`}>
                             <VideoCameraIcon className="h-4 w-4 mr-1" />
                             <span>Video</span>
@@ -1259,6 +1281,46 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                   />
                 </div>
                 
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
+                      Board
+                    </label>
+                    <input
+                      type="text"
+                      value={newModule.board}
+                      onChange={(e) => setNewModule({...newModule, board: e.target.value})}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
+                      placeholder={(selectedCourse as any)?.board || 'ssc/cbse/...'}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
+                      Grade
+                    </label>
+                    <input
+                      type="text"
+                      value={newModule.grade}
+                      onChange={(e) => setNewModule({...newModule, grade: e.target.value})}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
+                      placeholder={(((selectedCourse as any)?.grade ?? '') as any).toString() || '10'}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
+                    Subject Name
+                  </label>
+                  <input
+                    type="text"
+                    value={newModule.subjectname}
+                    onChange={(e) => setNewModule({...newModule, subjectname: e.target.value})}
+                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
+                    placeholder={selectedCourse?.title || ''}
+                  />
+                </div>
+                
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
                     Video URL
@@ -1278,12 +1340,18 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                   onClick={() => {
                     setOpenAddModuleDialog(false)
                                          // Reset form when canceling
-                     setNewModule({
-                       title: '',
-                       topicName: '',
-                       subtopicName: '',
-                       videoUrl: ''
-                     })
+                    const prefillBoard = ((selectedCourse as any)?.board || '') as string
+                    const prefillGrade = (((selectedCourse as any)?.grade ?? '') as any).toString()
+                    const prefillSubject = (selectedCourse?.title || '') as string
+                    setNewModule({
+                      title: '',
+                      topicName: '',
+                      subtopicName: '',
+                      videoUrl: '',
+                      subjectname: prefillSubject,
+                      board: prefillBoard,
+                      grade: prefillGrade
+                    })
                   }}
                   className={`px-4 py-2 rounded-md border ${themeClasses.button}`}
                 >

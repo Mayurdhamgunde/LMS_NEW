@@ -22,13 +22,15 @@ axios.interceptors.request.use(
       console.log('No auth token available for request');
     }
     
-    // Always include tenant ID header
-    config.headers['x-tenant-id'] = tenantId;
+    // Include tenant ID header, but do not override if already provided by the caller
+    if (!config.headers['x-tenant-id']) {
+      config.headers['x-tenant-id'] = tenantId;
+    }
     
     // Log for debugging
     console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
     console.log('Request headers:', JSON.stringify(config.headers));
-    console.log('Tenant ID being used:', tenantId);
+    console.log('Tenant ID being used:', config.headers['x-tenant-id']);
     
     // if (config.data) {
     //   console.log('Request payload:', JSON.stringify(config.data));
