@@ -1,0 +1,100 @@
+import axios from 'axios';
+
+// Configure axios defaults - using proxy instead of base URL
+// axios.defaults.baseURL = import.meta.env.VITE_API_URL || '';
+console.log('Using Vite proxy for API requests');
+
+// Add request interceptor to set tenant ID on all requests
+axios.interceptors.request.use(
+  (config) => {
+    // Get token and tenant ID from localStorage
+    const token = localStorage.getItem('token');
+    const tenantId = localStorage.getItem('tenantId') || 'default';
+    
+    // Ensure headers object exists
+    config.headers = config.headers || {};
+    
+    // Set Authorization header if token exists
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+      console.log('Request with token:', token.substring(0, 15) + '...');
+    } else {
+      console.log('No auth token available for request');
+    }
+    
+    // Always include tenant ID header
+    config.headers['x-tenant-id'] = tenantId;
+    
+    // Log for debugging
+    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
+    console.log('Request headers:', JSON.stringify(config.headers));
+    console.log('Tenant ID being used:', tenantId);
+    
+    // if (config.data) {
+    //   console.log('Request payload:', JSON.stringify(config.data));
+    // }
+    
+    return config;
+  },
+  (error) => {
+    console.error('Request interceptor error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor to handle common errors
+axios.interceptors.response.use(
+  (response) => {
+    console.log(`API Response: ${response.status} for ${response.config.url}`);
+    console.log('Response data:', response.data);
+    return response;
+  },
+  async (error) => {
+    console.error('API Error:', error);
+    console.error('Status:', error.response?.status);
+    console.error('Data:', error.response?.data);
+    console.error('URL:', error.config?.url);
+    console.error('Method:', error.config?.method);
+    
+    // Handle authentication errors - but not for login/register requests
+    if (error.response && error.response.status === 401) {
+      const isAuthRequest = error.config?.url?.includes('/api/auth/login') || 
+                           error.config?.url?.includes('/api/auth/register');
+      
+      if (!isAuthRequest) {
+        console.log('Authentication error - clearing token and redirecting to login');
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      } else {
+        console.log('Auth request failed - letting component handle the error');
+      }
+    }
+    
+    // Handle tenant errors
+    if (error.response && error.response.status === 400 && 
+        error.response.data?.error?.includes('Tenant ID')) {
+      console.error('Tenant error:', error.response.data.error);
+    }
+    
+    // Handle service unavailable
+    if (error.response && error.response.status === 503) {
+      console.error('Service unavailable:', error.response.data);
+    }
+    
+    // Handle 500 internal server errors - retry for progress/stats endpoint once
+    if (
+      error.response && 
+      error.response.status === 500 && 
+      error.config.url === '/api/progress/stats' && 
+      !error.config.__isRetryRequest
+    ) {
+      console.log('500 error on progress/stats - retrying once');
+      const newConfig = { ...error.config, __isRetryRequest: true };
+      return axios(newConfig);
+    }
+    
+    return Promise.reject(error);
+  }
+);
+
+export default axios; 

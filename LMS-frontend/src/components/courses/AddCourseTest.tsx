@@ -1,0 +1,434 @@
+import { useState, FormEvent, useContext } from 'react'
+import { useNavigate } from 'react-router-dom'
+import axios from 'axios'
+import AuthContext from '../../context/AuthContext'
+import Select from 'react-select'
+import {
+  AcademicCapIcon,
+  ArrowPathIcon,
+  CheckCircleIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  EyeIcon,
+  ExclamationTriangleIcon
+} from '@heroicons/react/24/outline'
+interface CourseFormData {
+  title: string;
+  status: string;
+  isPublic: boolean;
+  grade: string;
+  board: string;
+  medium: string[];
+}
+
+const steps = ['Basic Info', 'Settings'];
+
+const AddCourseTest = () => {
+  const navigate = useNavigate();
+  const { token, user } = useContext(AuthContext);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [activeStep, setActiveStep] = useState(0);
+  
+  const [formData, setFormData] = useState<CourseFormData>({
+    title: '',
+    status: 'draft',
+    isPublic: false,
+    grade: '',
+    board: '',
+    medium: []
+  });
+
+  const isValidGrade = (g: string) => {
+    const n = Number(g);
+    return Number.isInteger(n) && n >= 1 && n <= 12;
+  };
+
+  const mediumOptions = [
+    { value: 'Semi-English', label: 'Semi-English' },
+    { value: 'मराठी', label: 'मराठी' },
+    { value: 'English', label: 'English' },
+  ];
+
+  const boardOptions = [
+    { value: 'CBSE', label: 'CBSE' },
+    { value: 'SSC', label: 'SSC (Maharashtra)' },
+
+  ];
+
+  const handleNext = () => {
+    if (activeStep === 0 && (!formData.title || !isValidGrade(formData.grade))) {
+      setError('Please fill in all required fields. Grade must be an integer between 1 and 12.');
+      return;
+    }
+    // no step-1 specific validation now
+    
+    setError(null);
+    setActiveStep((prevActiveStep) => prevActiveStep + 1);
+  };
+
+  const handleBack = () => {
+    setError(null);
+    setActiveStep((prevActiveStep) => prevActiveStep - 1);
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+    if (type === 'checkbox') {
+      const { checked } = e.target as HTMLInputElement;
+      setFormData({
+        ...formData,
+        [name]: checked
+      });
+    } else {
+      setFormData({
+        ...formData,
+        [name]: value
+      });
+    }
+  };
+
+  const handleMediumChange = (selected: any) => {
+    const values = (selected || []).map((opt: any) => opt.value);
+      setFormData({
+        ...formData,
+      medium: values
+      });
+  };
+
+  const handleBoardChange = (selected: any) => {
+    const nextBoard = selected ? selected.value : '';
+    setFormData({
+      ...formData,
+      board: nextBoard,
+      medium: nextBoard === 'CBSE' ? [] : formData.medium
+    });
+  };
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    
+    if (!formData.title) {
+      setError('Please fill in all required fields');
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      const courseData = {
+        title: formData.title,
+        status: formData.status,
+        createdBy: user?._id,
+        grade: Number(formData.grade),
+        board: formData.board,
+        medium: formData.medium,
+      };
+      
+      const config = {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'x-tenant-id': 'default'
+        }
+      };
+      
+      await axios.post('/courses', courseData, config);
+      
+      setSuccess('Course created successfully!');
+      
+      setTimeout(() => {
+        navigate('/coursestest?newCourse=true');
+      }, 2000);
+    } catch (err: any) {
+      console.error('Course creation error:', err);
+      
+      if (err.response) {
+        if (err.response.status === 401) {
+          setError('Authentication error. Please log in again.');
+        } else if (err.response.status === 403) {
+          setError('You do not have permission to create courses.');
+        } else if (err.response.status === 504 || err.response.status === 408) {
+          setError('Request timed out. Please try again later.');
+        } else {
+          setError(err.response.data?.message || 'Failed to create course. Please try again.');
+        }
+      } else if (err.request) {
+        setError('No response received from server. Please check your connection and try again.');
+      } else {
+        setError('An error occurred while creating the course. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-900 text-white">
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex items-center gap-4 mb-8">
+          <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
+            <AcademicCapIcon className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold">Create New Course</h1>
+            <p className="text-gray-400">Fill in the details below to create your new Curriculum. You can save as draft and come back later.</p>
+          </div>
+        </div>
+
+        <div className="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden">
+          {error && (
+            <div className="bg-red-500/10 border-b border-red-500/20 text-red-400 p-4 flex items-center gap-2">
+              <ExclamationTriangleIcon className="h-5 w-5" />
+              <span>{error}</span>
+            </div>
+          )}
+          
+          {success && (
+            <div className="bg-green-500/10 border-b border-green-500/20 text-green-400 p-4 flex items-center gap-2">
+              <CheckCircleIcon className="h-5 w-5" />
+              <span>{success}</span>
+            </div>
+          )}
+
+          <div className="p-6 border-b border-white/10">
+            <div className="flex items-center justify-center gap-8">
+              {steps.map((step, index) => {
+                const isActive = index === activeStep;
+                const isCompleted = index < activeStep;
+                return (
+                  <div key={step} className="flex items-center">
+                    <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
+                      isCompleted 
+                        ? 'bg-green-500 text-white' 
+                        : isActive 
+                        ? 'bg-blue-500 text-white' 
+                        : 'bg-white/10 text-gray-400'
+                    }`}>
+                      {isCompleted ? (
+                        <CheckCircleIcon className="h-5 w-5" />
+                      ) : (
+                        index + 1
+                      )}
+                    </div>
+                    <span className={`ml-2 text-sm font-medium ${
+                      isActive ? 'text-white' : 'text-gray-400'
+                    }`}>
+                      {step}
+                    </span>
+                    {index < steps.length - 1 && (
+                      <div className={`w-12 h-px mx-4 ${
+                        isCompleted ? 'bg-green-500' : 'bg-white/10'
+                      }`} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="p-6">
+            {activeStep === 0 ? (
+              // Basic Info
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Subject Name *</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <AcademicCapIcon className="h-5 w-5 text-gray-400" />
+                      </div>
+                      <input
+                        type="text"
+                        name="title"
+                        value={formData.title}
+                        onChange={handleChange}
+                        disabled={loading}
+                        className="block w-full pl-10 pr-3 py-3 bg-white/5 border border-white/10 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-gray-400"
+                        placeholder="e.g., Mathematics"
+                        required
+                      />
+                    </div>
+                    {!formData.title && error && (
+                      <p className="mt-1 text-sm text-red-400">Subject name is required</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Grade Level *</label>
+                    <input
+                      type="number"
+                      name="grade"
+                      value={formData.grade}
+                      onChange={handleChange}
+                      disabled={loading}
+                      className="block w-full px-3 py-3 bg-white/5 border border-white/10 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-gray-400"
+                      placeholder="e.g., 10"
+                      min="1"
+                      max="12"
+                      step="1"
+                    />
+                    {(!isValidGrade(formData.grade)) && error && (
+                      <p className="mt-1 text-sm text-red-400">Grade must be an integer between 1 and 12</p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Educational Board</label>
+                  <Select
+                    name="board"
+                    value={boardOptions.find(opt => opt.value === formData.board) || null}
+                    onChange={handleBoardChange}
+                    isDisabled={loading}
+                    options={boardOptions}
+                    className="react-select-container"
+                    classNamePrefix="react-select"
+                    styles={{
+                      control: (base) => ({ ...base, backgroundColor: 'rgba(255, 255, 255, 0.05)', borderColor: 'rgba(255, 255, 255, 0.1)', color: 'white', minHeight: '14px' }),
+                      menu: (base) => ({ ...base, backgroundColor: '#1f2937', color: 'white' }),
+                      option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#374151' : '#1f2937', color: 'white' }),
+                      singleValue: (base) => ({ ...base, color: 'white' }),
+                      input: (base) => ({ ...base, color: 'white' })
+                    }}
+                  />
+                </div>
+
+                {formData.board !== 'CBSE' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Medium</label>
+                    <Select
+                      isMulti
+                      name="medium"
+                      value={mediumOptions.filter(opt => formData.medium.includes(opt.value))}
+                      onChange={handleMediumChange}
+                      isDisabled={loading}
+                      options={mediumOptions}
+                      className="react-select-container"
+                      classNamePrefix="react-select"
+                      styles={{
+                        control: (base) => ({ ...base, backgroundColor: 'rgba(255, 255, 255, 0.05)', borderColor: 'rgba(255, 255, 255, 0.1)', color: 'white', minHeight: '14px' }),
+                        menu: (base) => ({ ...base, backgroundColor: '#1f2937', color: 'white' }),
+                        option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#374151' : '#1f2937', color: 'white' }),
+                        singleValue: (base) => ({ ...base, color: 'white' }),
+                        input: (base) => ({ ...base, color: 'white' }),
+                        multiValue: (base) => ({ ...base, backgroundColor: 'rgba(59, 130, 246, 0.2)' }),
+                        multiValueLabel: (base) => ({ ...base, color: 'white' }),
+                        multiValueRemove: (base) => ({ ...base, color: 'white', ':hover': { backgroundColor: 'rgba(59,130,246,0.3)', color: 'white' } })
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Settings
+              <div className="space-y-8">
+                
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-4">Course Status</label>
+                  <div className="grid grid-cols-3 gap-4">
+                    {[
+                      { value: 'draft', label: 'Draft', desc: 'Work in progress', color: 'yellow' },
+                      { value: 'published', label: 'Published', desc: 'Live and accessible', color: 'green' }
+                    ].map((status) => (
+                      <label key={status.value} className="cursor-pointer">
+                        <input type="radio" name="status" value={status.value} checked={formData.status === status.value} onChange={handleChange} disabled={loading} className="sr-only peer" />
+                        <div className={`p-4 rounded-lg border-2 transition-all peer-checked:border-blue-500 peer-checked:bg-blue-500/10 ${formData.status === status.value ? 'border-blue-500 bg-blue-500/10' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
+                          <div className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${status.color === 'yellow' ? 'bg-yellow-500/20 text-yellow-400' : status.color === 'green' ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                            <div className="w-3 h-3 rounded-full bg-current"></div>
+                          </div>
+                          <h4 className="font-medium text-white mb-1">{status.label}</h4>
+                          <p className="text-sm text-gray-400">{status.desc}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white/5 backdrop-blur-sm rounded-lg border border-white/10 overflow-hidden">
+                  <div className="p-6 border-b border-white/10">
+                    <div className="flex items-center gap-3 mb-4">
+                      <EyeIcon className="h-6 w-6 text-gray-400" />
+                      <h3 className="text-lg font-semibold text-white">Course Preview</h3>
+                    </div>
+                    <div className="p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="text-lg font-semibold text-white truncate">{formData.title || 'Subject Name'}</h4>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ml-2 ${formData.status === 'published' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>{formData.status.charAt(0).toUpperCase() + formData.status.slice(1)}</span>
+                      </div>
+                      <p className="text-gray-400 text-sm mb-3 line-clamp-2">{'Course description will appear here...'}</p>
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    <h4 className="text-sm font-medium text-gray-300 mb-3">Setup Progress</h4>
+                    <div className="space-y-2">
+                      {[
+                        { label: 'Subject name', completed: !!formData.title },
+                        { label: 'Settings configured', completed: true }
+                      ].map((item, index) => (
+                        <div key={index} className="flex items-center gap-2 text-sm">
+                          <div className={`w-4 h-4 rounded-full flex items-center justify-center ${item.completed ? 'bg-green-500' : 'bg-white/10'}`}>{item.completed && <CheckCircleIcon className="h-3 w-3 text-white" />}</div>
+                          <span className={item.completed ? 'text-white' : 'text-gray-400'}>{item.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 border-t border-white/10 flex justify-between">
+            <button
+              type="button"
+              onClick={activeStep === 0 ? () => navigate(-1) : handleBack}
+              disabled={loading}
+              className="inline-flex items-center px-6 py-3 border border-white/10 text-white rounded-md hover:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <ArrowLeftIcon className="h-5 w-5 mr-2" />
+              {activeStep === 0 ? 'Cancel' : 'Back'}
+            </button>
+            
+            {activeStep < steps.length - 1 ? (
+              <button
+                type="button"
+                onClick={handleNext}
+                disabled={
+                  loading || 
+                  (activeStep === 0 && (!formData.title || !isValidGrade(formData.grade)))
+                }
+                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-md hover:from-blue-600 hover:to-purple-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Next
+                <ArrowRightIcon className="h-5 w-5 ml-2" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={loading || !formData.title || !isValidGrade(formData.grade)}
+                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-md hover:from-green-600 hover:to-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
+                    Creating Course...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircleIcon className="h-5 w-5 mr-2" />
+                    Create Course
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AddCourseTest;
