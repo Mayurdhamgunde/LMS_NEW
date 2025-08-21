@@ -48,8 +48,8 @@ interface Course {
 type CorrectAnswerKey = 'a' | 'b' | 'c' | 'd'
 
 interface QuizQuestionForm {
-  question: string
-  options: {
+  que: string
+  opt: {
     a: string
     b: string
     c: string
@@ -99,9 +99,11 @@ interface Module {
     videoUrl: string
   }[]
   topics?: {
-    topicName: string
-    subtopics: { 
-      subtopicName: string
+    topicName?: string
+    topicname?: string // Backend might send lowercase
+    subtopics?: { 
+      subtopicName?: string
+      subtopicname?: string // Backend might send lowercase
       videos?: {
         _id: string
         videoUrl: string
@@ -203,8 +205,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
   const [isUpdatingQuiz, setIsUpdatingQuiz] = useState(false)
   const [currentVideoQuizId, setCurrentVideoQuizId] = useState<string | null>(null)
   const emptyQuestion: QuizQuestionForm = {
-    question: '',
-    options: { a: '', b: '', c: '', d: '' },
+    que: '',
+    opt: { a: '', b: '', c: '', d: '' },
     correctAnswer: 'a',
     explanation: ''
   }
@@ -221,8 +223,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     medium: '',
     quiz: [
       {
-        question: '',
-        options: { a: '', b: '', c: '', d: '' },
+        que: '',
+        opt: { a: '', b: '', c: '', d: '' },
         correctAnswer: 'a',
         explanation: ''
       }
@@ -397,8 +399,13 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
   const extractPrimaryVideoUrl = (module: Module): string => {
     if (module.topics && module.topics.length > 0) {
       const t0 = module.topics[0]
+      // Handle both topicName and topicname field naming conventions
+      const topicName = t0.topicName || t0.topicname || ''
+      
       if (t0.subtopics && t0.subtopics.length > 0) {
         const s0 = t0.subtopics[0]
+        // Handle both subtopicName and subtopicname field naming conventions
+        const subtopicName = s0.subtopicName || s0.subtopicname || ''
         if (s0.videos && s0.videos.length > 0) return s0.videos[0].videoUrl || ''
       }
       if (t0.videos && t0.videos.length > 0) return t0.videos[0].videoUrl || ''
@@ -445,19 +452,21 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     setIsUpdatingQuiz(false)
     setCurrentVideoQuizId(null)
     
-    const topicName = module.topics?.[0]?.topicName || ''
-    const subtopicName = module.topics?.[0]?.subtopics?.[0]?.subtopicName || ''
+    const topicName = module.topics?.[0]?.topicName || module.topics?.[0]?.topicname || ''
+    const subtopicName = module.topics?.[0]?.subtopics?.[0]?.subtopicName || module.topics?.[0]?.subtopics?.[0]?.subtopicname || ''
     const initialUrl = extractPrimaryVideoUrl(module)
     const courseBoard = (selectedCourse as any)?.board || ''
     const courseGrade = ((selectedCourse as any)?.grade ?? '').toString()
     // medium may be string or array; pick first when array
     const m = (selectedCourse as any)?.medium
     const courseMedium = Array.isArray(m) ? (m[0] || '') : (m || '')
+    // Some tenants return chapter name as `chaptername` instead of `title`
+    const chapterName = (module.title || (module as any).chaptername || '') as string
     setQuizForm({
-      videoTitle: module.title || '',
+      videoTitle: chapterName,
       videoUrl: initialUrl,
       ytId: '',
-      moduleName: module.title || '',
+      moduleName: chapterName,
       topicName,
       subtopicName,
       courseName: selectedCourse?.title || '',
@@ -473,13 +482,18 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
   }
 
   const handleDocumentAction = async (module: Module) => {
-    console.log('Document button clicked for module:', module.title);
+    const moduleName = (module.title || (module as any).chaptername || '').trim();
+    console.log('Document button clicked for module:', moduleName);
     console.log('Module data:', module);
+    if (!moduleName) {
+      alert('Module name is missing. Please ensure the chapter has a name.');
+      return;
+    }
     
     try {
       console.log('Making API call to get video quiz by module name...');
       // First, get the video quiz by module name to find the ID
-      const response = await axios.get(`/vq/module/${encodeURIComponent(module.title)}`);
+      const response = await axios.get(`/vq/module/${encodeURIComponent(moduleName)}`);
       console.log('API response:', response.data);
       
       if (response.data.success && response.data.data && response.data.data.quizzes && response.data.data.quizzes.length > 0) {
@@ -505,14 +519,15 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
             videoTitle: videoQuiz.videoTitle || '',
             videoUrl: videoQuiz.videoUrl || '',
             ytId: videoQuiz.ytId || '',
-            moduleName: videoQuiz.moduleName || '',
+            // Support both default-tenant (chapterName/subName/questions) and standard fields
+            moduleName: (videoQuiz.moduleName || videoQuiz.chapterName || module.title || (module as any).chaptername || ''),
             topicName: videoQuiz.topicName || '',
             subtopicName: videoQuiz.subtopicName || '',
-            courseName: videoQuiz.courseName || '',
+            courseName: (videoQuiz.courseName || videoQuiz.subName || selectedCourse?.title || ''),
             board: videoQuiz.board || '',
-            grade: videoQuiz.grade || '',
-            medium: videoQuiz.medium || '',
-            quiz: videoQuiz.quiz || [{ ...emptyQuestion }]
+            grade: (videoQuiz.grade ?? '').toString(),
+            medium: (videoQuiz.medium ?? ''),
+            quiz: (videoQuiz.quiz || videoQuiz.questions || [{ ...emptyQuestion }])
           });
           
           // Set the module for quiz and open the dialog
@@ -575,11 +590,11 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         modulePayload.videos = [] // Empty videos array at module level (matching Postman)
         modulePayload.topics = [
           {
-            topicName: newModule.topicName.trim(),
+            topicname: newModule.topicName.trim(), // Backend expects 'topicname' not 'topicName'
             videos: [], // Empty videos array at topic level (matching Postman)
             subtopics: [
               {
-                subtopicName: newModule.subtopicName.trim(),
+                subtopicname: newModule.subtopicName.trim(), // Backend expects 'subtopicname' not 'subtopicName'
                 videos: [
                   createVideoObject(newModule.videoUrl)
                 ]
@@ -593,7 +608,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         modulePayload.videos = [] // Empty videos array at module level (matching Postman)
         modulePayload.topics = [
           {
-            topicName: newModule.topicName.trim(),
+            topicname: newModule.topicName.trim(), // Backend expects 'topicname' not 'topicName'
             videos: [
               createVideoObject(newModule.videoUrl)
             ],
@@ -671,12 +686,12 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     
     if (module.topics && module.topics.length > 0) {
       const topic = module.topics[0]
-      topicName = topic.topicName || ''
+      topicName = topic.topicName || topic.topicname || ''
       
       if (topic.subtopics && topic.subtopics.length > 0) {
         // Video URL is in subtopic
         const subtopic = topic.subtopics[0]
-        subtopicName = subtopic.subtopicName || ''
+        subtopicName = subtopic.subtopicName || subtopic.subtopicname || ''
         if (subtopic.videos && subtopic.videos.length > 0) {
           videoUrl = subtopic.videos[0].videoUrl || ''
         }
@@ -717,11 +732,11 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         modulePayload.videos = [] // Empty videos array at module level (matching Postman)
         modulePayload.topics = [
           {
-            topicName: editModule.topicName.trim(),
+            topicname: editModule.topicName.trim(), // Backend expects 'topicname' not 'topicName'
             videos: [], // Empty videos array at topic level (matching Postman)
             subtopics: [
               {
-                subtopicName: editModule.subtopicName.trim(),
+                subtopicname: editModule.subtopicName.trim(), // Backend expects 'subtopicname' not 'subtopicName'
                 videos: [
                   createVideoObject(editModule.videoUrl)
                 ]
@@ -735,7 +750,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         modulePayload.videos = [] // Empty videos array at module level (matching Postman)
         modulePayload.topics = [
           {
-            topicName: editModule.topicName.trim(),
+            topicname: editModule.topicName.trim(), // Backend expects 'topicname' not 'topicName'
             videos: [
               createVideoObject(editModule.videoUrl)
             ],
@@ -1626,10 +1641,10 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                       </div>
                       <textarea
                         rows={3}
-                        value={q.question}
+                        value={q.que}
                         onChange={(e) => {
                           const quiz = [...quizForm.quiz]
-                          quiz[idx] = { ...quiz[idx], question: e.target.value }
+                          quiz[idx] = { ...quiz[idx], que: e.target.value }
                           setQuizForm({ ...quizForm, quiz })
                         }}
                         className={`w-full mb-3 px-4 py-2 border rounded-lg ${themeClasses.input}`}
@@ -1640,10 +1655,10 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                           <input
                             key={key}
                             type="text"
-                            value={q.options[key]}
+                            value={q.opt[key]}
                             onChange={(e) => {
                               const quiz = [...quizForm.quiz]
-                              quiz[idx] = { ...quiz[idx], options: { ...quiz[idx].options, [key]: e.target.value } }
+                              quiz[idx] = { ...quiz[idx], opt: { ...quiz[idx].opt, [key]: e.target.value } }
                               setQuizForm({ ...quizForm, quiz })
                             }}
                             className={`w-full px-4 py-2 border rounded-lg ${themeClasses.input}`}
@@ -1742,6 +1757,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                         topicName: quizForm.topicName?.trim() || undefined,
                         subtopicName: quizForm.subtopicName?.trim() || undefined,
                         courseName: quizForm.courseName.trim(),
+                        // Backend (default tenant) expects courseId which maps to subjectId
+                        courseId: selectedCourse._id,
                         board: quizForm.board.trim(),
                         grade: quizForm.grade.trim(),
                         medium: boardUpper === 'CBSE' ? undefined : quizForm.medium.trim(),

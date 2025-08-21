@@ -34,6 +34,93 @@ const handleSuccess = (res, data, message = 'Operation successful', statusCode =
     data
   });
 };
+
+// Helper function to transform request data for storage
+const transformRequestDataForStorage = (data, tenantId) => {
+  const transformed = { ...data };
+  
+  if (tenantId === 'default') {
+    // For default tenant, map incoming fields to storage fields
+    if (transformed.moduleName !== undefined) {
+      transformed.chapterName = transformed.moduleName;
+      delete transformed.moduleName;
+    }
+    
+    if (transformed.courseName !== undefined) {
+      transformed.subName = transformed.courseName;
+      delete transformed.courseName;
+    }
+    
+    if (transformed.courseId !== undefined) {
+      transformed.subjectId = transformed.courseId;
+      delete transformed.courseId;
+    }
+    
+    if (transformed.quiz !== undefined) {
+      transformed.questions = transformed.quiz;
+      delete transformed.quiz;
+    }
+  } else {
+    // For non-default tenants, ensure standard field names
+    if (transformed.chapterName !== undefined) {
+      transformed.moduleName = transformed.chapterName;
+      delete transformed.chapterName;
+    }
+    
+    if (transformed.subName !== undefined) {
+      transformed.courseName = transformed.subName;
+      delete transformed.subName;
+    }
+    
+    if (transformed.subjectId !== undefined) {
+      delete transformed.subjectId;
+    }
+    
+    if (transformed.questions !== undefined) {
+      transformed.quiz = transformed.questions;
+      delete transformed.questions;
+    }
+  }
+  
+  return transformed;
+};
+
+// Helper function to transform response data for output
+const transformResponseDataForOutput = (data, tenantId) => {
+  if (Array.isArray(data)) {
+    return data.map(item => transformResponseDataForOutput(item, tenantId));
+  } else if (data && typeof data === 'object') {
+    const transformed = { ...data };
+    
+    if (tenantId === 'default') {
+      // For default tenant, return the expected field names
+      transformed.chapterName = transformed.chapterName || transformed.moduleName;
+      transformed.subName = transformed.subName || transformed.courseName;
+      transformed.questions = transformed.questions || transformed.quiz;
+      
+      // Remove the storage fields
+      delete transformed.moduleName;
+      delete transformed.courseName;
+      delete transformed.quiz;
+      delete transformed.subjectId; // Internal field, not exposed in response
+    } else {
+      // For non-default tenants, return standard field names
+      transformed.moduleName = transformed.moduleName || transformed.chapterName;
+      transformed.courseName = transformed.courseName || transformed.subName;
+      transformed.quiz = transformed.quiz || transformed.questions;
+      
+      // Remove the default tenant fields
+      delete transformed.chapterName;
+      delete transformed.subName;
+      delete transformed.questions;
+      delete transformed.subjectId;
+    }
+    
+    return transformed;
+  }
+  
+  return data;
+};
  
 /**
  * @desc    Create a new video quiz
@@ -59,6 +146,7 @@ exports.createVideoQuiz = async (req, res) => {
       topicName,
       subtopicName,
       courseName,
+      courseId,
       board,
       grade,
       medium,
@@ -66,12 +154,48 @@ exports.createVideoQuiz = async (req, res) => {
     } = req.body;
     const tenantId = req.tenantId;
  
+    // Transform data for storage based on tenant
+    const storageData = transformRequestDataForStorage({
+      videoTitle,
+      videoUrl,
+      ytId,
+      moduleName,
+      topicName,
+      subtopicName,
+      courseName,
+      courseId,
+      board,
+      grade,
+      medium,
+      quiz
+    }, tenantId);
+ 
     // Validate required fields
-    const isCBSE = (board || '').toUpperCase() === 'CBSE'
-    if (!videoTitle || !videoUrl || !moduleName || !courseName || !board || !grade || (!isCBSE && !medium) || !tenantId) {
+    const isCBSE = (board || '').toUpperCase() === 'CBSE';
+    
+    // Check required fields based on tenant
+    let missingFields = [];
+    
+    if (!videoTitle) missingFields.push('videoTitle');
+    if (!videoUrl) missingFields.push('videoUrl');
+    if (!board) missingFields.push('board');
+    if (!grade) missingFields.push('grade');
+    
+    if (tenantId === 'default') {
+      if (!storageData.chapterName) missingFields.push('moduleName');
+      if (!storageData.subName) missingFields.push('courseName');
+      if (!storageData.subjectId) missingFields.push('courseId');
+    } else {
+      if (!storageData.moduleName) missingFields.push('moduleName');
+      if (!storageData.courseName) missingFields.push('courseName');
+    }
+    
+    if (!isCBSE && !medium) missingFields.push('medium');
+    
+    if (missingFields.length > 0) {
       return res.status(400).json({
         success: false,
-        error: 'Video title, URL, module name, course name, board, grade, and tenant ID are required. Medium is required unless board is CBSE.'
+        error: `Missing required fields: ${missingFields.join(', ')}`
       });
     }
  
@@ -79,11 +203,12 @@ exports.createVideoQuiz = async (req, res) => {
     const { VideoQuizModel } = getModels(req.tenantConnection);
  
     // Check if video with same title already exists in the same context
+    const contextField = tenantId === 'default' ? 'chapterName' : 'moduleName';
     const existingVideo = await VideoQuizModel.findOne({
-      videoTitle,
-      moduleName,
-      topicName: topicName || null,
-      subtopicName: subtopicName || null,
+      videoTitle: storageData.videoTitle,
+      [contextField]: storageData[contextField],
+      topicName: storageData.topicName || null,
+      subtopicName: storageData.subtopicName || null,
       tenantId
     });
  
@@ -96,22 +221,14 @@ exports.createVideoQuiz = async (req, res) => {
  
     // Create video document
     const videoQuiz = new VideoQuizModel({
-      videoTitle,
-      videoUrl,
-      ytId,
-      moduleName,
-      topicName,
-      subtopicName,
-      courseName,
-      board,
-      grade,
-      medium: isCBSE ? undefined : medium,
-      quiz: quiz || [],
+      ...storageData,
       tenantId
     });
  
     const savedQuiz = await videoQuiz.save();
-    return handleSuccess(res, savedQuiz, 'Video quiz created successfully', 201);
+    const responseData = transformResponseDataForOutput(savedQuiz.toObject(), tenantId);
+    
+    return handleSuccess(res, responseData, 'Video quiz created successfully', 201);
  
   } catch (error) {
     if (error.code === 11000) {
@@ -157,11 +274,18 @@ exports.getAllVideoQuizzes = async (req, res) => {
  
     // Build filter object
     const filter = { tenantId };
-   
-    if (moduleName) filter.moduleName = new RegExp(moduleName, 'i');
+    
+    // Transform filter based on tenant
+    if (tenantId === 'default') {
+      if (moduleName) filter.chapterName = new RegExp(moduleName, 'i');
+      if (courseName) filter.subName = new RegExp(courseName, 'i');
+    } else {
+      if (moduleName) filter.moduleName = new RegExp(moduleName, 'i');
+      if (courseName) filter.courseName = new RegExp(courseName, 'i');
+    }
+    
     if (topicName) filter.topicName = new RegExp(topicName, 'i');
     if (subtopicName) filter.subtopicName = new RegExp(subtopicName, 'i');
-    if (courseName) filter.courseName = new RegExp(courseName, 'i');
     if (board) filter.board = new RegExp(board, 'i');
     if (grade) filter.grade = grade;
     if (medium) filter.medium = new RegExp(medium, 'i');
@@ -183,11 +307,14 @@ exports.getAllVideoQuizzes = async (req, res) => {
         .lean(),
       VideoQuizModel.countDocuments(filter)
     ]);
+    
+    // Transform response based on tenant
+    const transformedQuizzes = transformResponseDataForOutput(quizzes, tenantId);
  
     const totalPages = Math.ceil(total / parseInt(limit));
  
     return handleSuccess(res, {
-      quizzes,
+      quizzes: transformedQuizzes,
       pagination: {
         currentPage: parseInt(page),
         totalPages,
@@ -230,8 +357,11 @@ exports.getVideoQuizById = async (req, res) => {
         message: 'Video quiz not found'
       });
     }
+    
+    // Transform response based on tenant
+    const transformedQuiz = transformResponseDataForOutput(quiz, tenantId);
  
-    return handleSuccess(res, quiz);
+    return handleSuccess(res, transformedQuiz);
   } catch (error) {
     if (error.name === 'CastError') {
       return res.status(400).json({
@@ -274,8 +404,11 @@ exports.getVideoQuizByTitle = async (req, res) => {
         message: 'Video quiz not found'
       });
     }
+    
+    // Transform response based on tenant
+    const transformedQuiz = transformResponseDataForOutput(quiz, tenantId);
  
-    return handleSuccess(res, quiz);
+    return handleSuccess(res, transformedQuiz);
   } catch (error) {
     return handleError(res, error);
   }
@@ -299,7 +432,7 @@ exports.updateVideoQuiz = async (req, res) => {
  
     const { id } = req.params;
     const tenantId = req.tenantId;
-    const updateData = { ...req.body };
+    const updateData = transformRequestDataForStorage({ ...req.body }, tenantId);
  
     if (!tenantId) {
       return res.status(400).json({
@@ -326,8 +459,11 @@ exports.updateVideoQuiz = async (req, res) => {
         message: 'Video quiz not found'
       });
     }
+    
+    // Transform response based on tenant
+    const transformedQuiz = transformResponseDataForOutput(updatedQuiz.toObject(), tenantId);
  
-    return handleSuccess(res, updatedQuiz, 'Video quiz updated successfully');
+    return handleSuccess(res, transformedQuiz, 'Video quiz updated successfully');
   } catch (error) {
     return handleError(res, error, 400);
   }
@@ -361,8 +497,11 @@ exports.deleteVideoQuiz = async (req, res) => {
         message: 'Video quiz not found'
       });
     }
+    
+    // Transform response based on tenant
+    const transformedQuiz = transformResponseDataForOutput(deletedQuiz.toObject(), tenantId);
  
-    return handleSuccess(res, { id }, 'Video quiz deleted successfully');
+    return handleSuccess(res, transformedQuiz, 'Video quiz deleted successfully');
   } catch (error) {
     if (error.name === 'CastError') {
       return res.status(400).json({
@@ -404,9 +543,11 @@ exports.addQuizQuestions = async (req, res) => {
     // Get models
     const { VideoQuizModel } = getModels(req.tenantConnection);
  
+    const fieldName = tenantId === 'default' ? 'questions' : 'quiz';
+    
     const updatedQuiz = await VideoQuizModel.findOneAndUpdate(
       { _id: id, tenantId },
-      { $push: { quiz: { $each: questions } } },
+      { $push: { [fieldName]: { $each: questions } } },
       { new: true, runValidators: true }
     );
  
@@ -416,8 +557,11 @@ exports.addQuizQuestions = async (req, res) => {
         message: 'Video quiz not found'
       });
     }
+    
+    // Transform response based on tenant
+    const transformedQuiz = transformResponseDataForOutput(updatedQuiz.toObject(), tenantId);
  
-    return handleSuccess(res, updatedQuiz, 'Quiz questions added successfully');
+    return handleSuccess(res, transformedQuiz, 'Quiz questions added successfully');
   } catch (error) {
     return handleError(res, error, 400);
   }
@@ -463,7 +607,9 @@ exports.updateQuizQuestion = async (req, res) => {
     }
  
     const index = parseInt(questionIndex);
-    if (index >= quiz.quiz.length || index < 0) {
+    const fieldName = tenantId === 'default' ? 'questions' : 'quiz';
+    
+    if (index >= quiz[fieldName].length || index < 0) {
       return res.status(400).json({
         success: false,
         message: 'Invalid question index'
@@ -471,10 +617,13 @@ exports.updateQuizQuestion = async (req, res) => {
     }
  
     // Update the specific question
-    quiz.quiz[index] = { ...quiz.quiz[index].toObject(), ...questionData };
+    quiz[fieldName][index] = { ...quiz[fieldName][index].toObject(), ...questionData };
     const updatedQuiz = await quiz.save();
+    
+    // Transform response based on tenant
+    const transformedQuiz = transformResponseDataForOutput(updatedQuiz.toObject(), tenantId);
  
-    return handleSuccess(res, updatedQuiz, 'Quiz question updated successfully');
+    return handleSuccess(res, transformedQuiz, 'Quiz question updated successfully');
   } catch (error) {
     return handleError(res, error, 400);
   }
@@ -510,17 +659,22 @@ exports.deleteQuizQuestion = async (req, res) => {
     }
  
     const index = parseInt(questionIndex);
-    if (index >= quiz.quiz.length || index < 0) {
+    const fieldName = tenantId === 'default' ? 'questions' : 'quiz';
+    
+    if (index >= quiz[fieldName].length || index < 0) {
       return res.status(400).json({
         success: false,
         message: 'Invalid question index'
       });
     }
  
-    quiz.quiz.splice(index, 1);
+    quiz[fieldName].splice(index, 1);
     const updatedQuiz = await quiz.save();
+    
+    // Transform response based on tenant
+    const transformedQuiz = transformResponseDataForOutput(updatedQuiz.toObject(), tenantId);
  
-    return handleSuccess(res, updatedQuiz, 'Quiz question deleted successfully');
+    return handleSuccess(res, transformedQuiz, 'Quiz question deleted successfully');
   } catch (error) {
     return handleError(res, error);
   }
@@ -544,7 +698,15 @@ exports.getQuizzesByHierarchy = async (req, res) => {
       });
     }
  
-    const filter = { tenantId, moduleName };
+    const filter = { tenantId };
+    
+    // Transform filter based on tenant
+    if (tenantId === 'default') {
+      filter.chapterName = moduleName;
+    } else {
+      filter.moduleName = moduleName;
+    }
+    
     if (topicName && topicName !== 'undefined') filter.topicName = topicName;
     if (subtopicName && subtopicName !== 'undefined') filter.subtopicName = subtopicName;
  
@@ -561,11 +723,14 @@ exports.getQuizzesByHierarchy = async (req, res) => {
         .lean(),
       VideoQuizModel.countDocuments(filter)
     ]);
+    
+    // Transform response based on tenant
+    const transformedQuizzes = transformResponseDataForOutput(quizzes, tenantId);
  
     const totalPages = Math.ceil(total / parseInt(limit));
  
     return handleSuccess(res, {
-      quizzes,
+      quizzes: transformedQuizzes,
       pagination: {
         currentPage: parseInt(page),
         totalPages,
@@ -596,7 +761,14 @@ exports.getQuizzesByCourse = async (req, res) => {
       });
     }
  
-    const filter = { tenantId, courseName };
+    const filter = { tenantId };
+    
+    // Transform filter based on tenant
+    if (tenantId === 'default') {
+      filter.subName = courseName;
+    } else {
+      filter.courseName = courseName;
+    }
  
     // Get models
     const { VideoQuizModel } = getModels(req.tenantConnection);
@@ -611,11 +783,14 @@ exports.getQuizzesByCourse = async (req, res) => {
         .lean(),
       VideoQuizModel.countDocuments(filter)
     ]);
+    
+    // Transform response based on tenant
+    const transformedQuizzes = transformResponseDataForOutput(quizzes, tenantId);
  
     const totalPages = Math.ceil(total / parseInt(limit));
  
     return handleSuccess(res, {
-      quizzes,
+      quizzes: transformedQuizzes,
       pagination: {
         currentPage: parseInt(page),
         totalPages,
@@ -661,11 +836,14 @@ exports.getQuizzesByEducationalContext = async (req, res) => {
         .lean(),
       VideoQuizModel.countDocuments(filter)
     ]);
+    
+    // Transform response based on tenant
+    const transformedQuizzes = transformResponseDataForOutput(quizzes, tenantId);
  
     const totalPages = Math.ceil(total / parseInt(limit));
  
     return handleSuccess(res, {
-      quizzes,
+      quizzes: transformedQuizzes,
       pagination: {
         currentPage: parseInt(page),
         totalPages,
@@ -709,10 +887,13 @@ exports.searchQuizzes = async (req, res) => {
       $or: [
         { videoTitle: searchRegex },
         { moduleName: searchRegex },
+        { chapterName: searchRegex },
         { topicName: searchRegex },
         { subtopicName: searchRegex },
         { courseName: searchRegex },
-        { 'quiz.question': searchRegex }
+        { subName: searchRegex },
+        { 'quiz.que': searchRegex },
+        { 'questions.que': searchRegex }
       ]
     };
  
@@ -729,11 +910,14 @@ exports.searchQuizzes = async (req, res) => {
         .lean(),
       VideoQuizModel.countDocuments(filter)
     ]);
+    
+    // Transform response based on tenant
+    const transformedQuizzes = transformResponseDataForOutput(quizzes, tenantId);
  
     const totalPages = Math.ceil(total / parseInt(limit));
  
     return handleSuccess(res, {
-      quizzes,
+      quizzes: transformedQuizzes,
       pagination: {
         currentPage: parseInt(page),
         totalPages,
@@ -772,10 +956,34 @@ exports.getQuizStatistics = async (req, res) => {
         $group: {
           _id: null,
           totalQuizzes: { $sum: 1 },
-          totalQuestions: { $sum: { $size: '$quiz' } },
-          uniqueModules: { $addToSet: '$moduleName' },
+          totalQuestions: { 
+            $sum: { 
+              $cond: [
+                { $eq: ['$tenantId', 'default'] },
+                { $size: '$questions' },
+                { $size: '$quiz' }
+              ]
+            }
+          },
+          uniqueModules: { 
+            $addToSet: { 
+              $cond: [
+                { $eq: ['$tenantId', 'default'] },
+                '$chapterName',
+                '$moduleName'
+              ]
+            }
+          },
           uniqueTopics: { $addToSet: '$topicName' },
-          uniqueCourses: { $addToSet: '$courseName' },
+          uniqueCourses: { 
+            $addToSet: { 
+              $cond: [
+                { $eq: ['$tenantId', 'default'] },
+                '$subName',
+                '$courseName'
+              ]
+            }
+          },
           uniqueBoards: { $addToSet: '$board' },
           uniqueGrades: { $addToSet: '$grade' }
         }
@@ -835,17 +1043,20 @@ exports.bulkCreateVideoQuizzes = async (req, res) => {
     // Get models
     const { VideoQuizModel } = getModels(req.tenantConnection);
  
-    // Add tenantId to all quizzes
+    // Add tenantId and transform data for all quizzes
     const quizzesWithTenant = quizzes.map(quiz => ({
-      ...quiz,
+      ...transformRequestDataForStorage(quiz, tenantId),
       tenantId
     }));
  
     const createdQuizzes = await VideoQuizModel.insertMany(quizzesWithTenant, {
       ordered: false // Continue on error
     });
+    
+    // Transform response based on tenant
+    const transformedQuizzes = transformResponseDataForOutput(createdQuizzes, tenantId);
  
-    return handleSuccess(res, createdQuizzes, 'Bulk video quizzes created successfully', 201);
+    return handleSuccess(res, transformedQuizzes, 'Bulk video quizzes created successfully', 201);
   } catch (error) {
     return handleError(res, error, 400);
   }
@@ -857,4 +1068,3 @@ exports.getVideos = exports.getAllVideoQuizzes;
 exports.getVideo = exports.getVideoQuizById;
 exports.updateVideo = exports.updateVideoQuiz;
 exports.deleteVideo = exports.deleteVideoQuiz;
- 

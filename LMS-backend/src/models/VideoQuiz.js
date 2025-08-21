@@ -2,11 +2,11 @@ const mongoose = require('mongoose');
 
 const quizSchema = new mongoose.Schema(
   {
-    question: {
+    que: {
       type: String,
       required: true
     },
-    options: {
+    opt: {
       a: { type: String, required: true },
       b: { type: String, required: true },
       c: { type: String, required: true },
@@ -29,7 +29,7 @@ const quizSchema = new mongoose.Schema(
 
 const VideoQuizSchema = new mongoose.Schema(
   {
-    // Video information (names instead of IDs)
+    // Video information
     videoTitle: {
       type: String,
       required: true,
@@ -47,7 +47,9 @@ const VideoQuizSchema = new mongoose.Schema(
     // Hierarchy using names
     moduleName: {
       type: String,
-      required: true,
+      required: function() {
+        return this.tenantId !== 'default';
+      },
       trim: true
     },
     topicName: {
@@ -61,11 +63,39 @@ const VideoQuizSchema = new mongoose.Schema(
       trim: true
     },
     
+    // For default tenant
+    chapterName: {
+      type: String,
+      required: function() {
+        return this.tenantId === 'default';
+      },
+      trim: true
+    },
+    
     // Course/Subject information
     courseName: {
       type: String,
-      required: true,
+      required: function() {
+        return this.tenantId !== 'default';
+      },
       trim: true
+    },
+    
+    // For default tenant
+    subName: {
+      type: String,
+      required: function() {
+        return this.tenantId === 'default';
+      },
+      trim: true
+    },
+    
+    // For default tenant - courseId stored as subjectId
+    subjectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: function() {
+        return this.tenantId === 'default';
+      }
     },
     
     // Educational context
@@ -81,7 +111,6 @@ const VideoQuizSchema = new mongoose.Schema(
     },
     medium: {
       type: String,
-      // Medium is not applicable for CBSE board
       required: function() {
         try {
           return (this.board || '').toUpperCase() !== 'CBSE';
@@ -95,7 +124,19 @@ const VideoQuizSchema = new mongoose.Schema(
     // The quiz content
     quiz: {
       type: [quizSchema],
-      default: []  
+      default: [],
+      required: function() {
+        return this.tenantId !== 'default';
+      }
+    },
+    
+    // For default tenant
+    questions: {
+      type: [quizSchema],
+      default: [],
+      required: function() {
+        return this.tenantId === 'default';
+      }
     },
     
     tenantId: {
@@ -106,7 +147,35 @@ const VideoQuizSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    collection: 'videoquizzes'
+    collection: 'videoquizzes',
+    toJSON: {
+      transform: function(doc, ret) {
+        // For default tenant, map fields to the expected names
+        if (ret.tenantId === 'default') {
+          // Ensure we're returning the correct field names for default tenant
+          ret.chapterName = ret.chapterName || ret.moduleName;
+          ret.subName = ret.subName || ret.courseName;
+          ret.questions = ret.questions || ret.quiz;
+          
+          // Remove the non-default fields
+          delete ret.moduleName;
+          delete ret.courseName;
+          delete ret.quiz;
+        } else {
+          // For non-default tenants, ensure standard field names
+          ret.moduleName = ret.moduleName || ret.chapterName;
+          ret.courseName = ret.courseName || ret.subName;
+          ret.quiz = ret.quiz || ret.questions;
+          
+          // Remove the default tenant fields
+          delete ret.chapterName;
+          delete ret.subName;
+          delete ret.subjectId;
+          delete ret.questions;
+        }
+        return ret;
+      }
+    }
   }
 );
 
@@ -116,7 +185,9 @@ VideoQuizSchema.index({ tenantId: 1, moduleName: 1 });
 VideoQuizSchema.index({ tenantId: 1, topicName: 1 });
 VideoQuizSchema.index({ tenantId: 1, subtopicName: 1 });
 VideoQuizSchema.index({ tenantId: 1, courseName: 1 });
-VideoQuizSchema.index({ tenantId: 1, subjectName: 1 });
+VideoQuizSchema.index({ tenantId: 1, chapterName: 1 });
+VideoQuizSchema.index({ tenantId: 1, subName: 1 });
+VideoQuizSchema.index({ tenantId: 1, subjectId: 1 });
 VideoQuizSchema.index({ tenantId: 1, board: 1, grade: 1, medium: 1 });
 
 const VideoQuiz = mongoose.models.VideoQuiz || mongoose.model('VideoQuiz', VideoQuizSchema);
