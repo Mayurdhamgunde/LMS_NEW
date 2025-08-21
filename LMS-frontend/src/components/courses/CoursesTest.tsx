@@ -48,8 +48,8 @@ interface Course {
 type CorrectAnswerKey = 'a' | 'b' | 'c' | 'd'
 
 interface QuizQuestionForm {
-  question: string
-  options: {
+  que: string
+  opt: {
     a: string
     b: string
     c: string
@@ -99,9 +99,11 @@ interface Module {
     videoUrl: string
   }[]
   topics?: {
-    topicName: string
-    subtopics: { 
-      subtopicName: string
+    topicName?: string
+    topicname?: string // Backend might send lowercase
+    subtopics?: { 
+      subtopicName?: string
+      subtopicname?: string // Backend might send lowercase
       videos?: {
         _id: string
         videoUrl: string
@@ -203,8 +205,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
   const [isUpdatingQuiz, setIsUpdatingQuiz] = useState(false)
   const [currentVideoQuizId, setCurrentVideoQuizId] = useState<string | null>(null)
   const emptyQuestion: QuizQuestionForm = {
-    question: '',
-    options: { a: '', b: '', c: '', d: '' },
+    que: '',
+    opt: { a: '', b: '', c: '', d: '' },
     correctAnswer: 'a',
     explanation: ''
   }
@@ -221,8 +223,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     medium: '',
     quiz: [
       {
-        question: '',
-        options: { a: '', b: '', c: '', d: '' },
+        que: '',
+        opt: { a: '', b: '', c: '', d: '' },
         correctAnswer: 'a',
         explanation: ''
       }
@@ -275,7 +277,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     videoUrl: '',
     subjectname: '',
     board: '',
-    grade: ''
+    grade: '',
+    medium: ''
   })
 
   const [editModule, setEditModule] = useState({
@@ -397,8 +400,13 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
   const extractPrimaryVideoUrl = (module: Module): string => {
     if (module.topics && module.topics.length > 0) {
       const t0 = module.topics[0]
+      // Handle both topicName and topicname field naming conventions
+      const topicName = t0.topicName || t0.topicname || ''
+      
       if (t0.subtopics && t0.subtopics.length > 0) {
         const s0 = t0.subtopics[0]
+        // Handle both subtopicName and subtopicname field naming conventions
+        const subtopicName = s0.subtopicName || s0.subtopicname || ''
         if (s0.videos && s0.videos.length > 0) return s0.videos[0].videoUrl || ''
       }
       if (t0.videos && t0.videos.length > 0) return t0.videos[0].videoUrl || ''
@@ -445,14 +453,14 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     setIsUpdatingQuiz(false)
     setCurrentVideoQuizId(null)
     
-    const topicName = module.topics?.[0]?.topicName || ''
-    const subtopicName = module.topics?.[0]?.subtopics?.[0]?.subtopicName || ''
+    const topicName = module.topics?.[0]?.topicName || module.topics?.[0]?.topicname || ''
+    const subtopicName = module.topics?.[0]?.subtopics?.[0]?.subtopicName || module.topics?.[0]?.subtopics?.[0]?.subtopicname || ''
     const initialUrl = extractPrimaryVideoUrl(module)
     const courseBoard = (selectedCourse as any)?.board || ''
     const courseGrade = ((selectedCourse as any)?.grade ?? '').toString()
-    // medium may be string or array; pick first when array
+    // medium may be string or array; show all when array
     const m = (selectedCourse as any)?.medium
-    const courseMedium = Array.isArray(m) ? (m[0] || '') : (m || '')
+    const courseMedium = Array.isArray(m) ? (m.filter(Boolean).join(', ') || '') : (m || '')
     // Some tenants return chapter name as `chaptername` instead of `title`
     const chapterName = (module.title || (module as any).chaptername || '') as string
     setQuizForm({
@@ -549,6 +557,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     const prefillBoard = ((selectedCourse as any)?.board || '') as string
     const prefillGrade = (((selectedCourse as any)?.grade ?? '') as any).toString()
     const prefillSubject = (selectedCourse?.title || '') as string
+    const m = (selectedCourse as any)?.medium
+    const prefillMedium = Array.isArray(m) ? (m.filter(Boolean).join(', ') || '') : (m || '')
     setNewModule({
       title: '',
       topicName: '',
@@ -556,7 +566,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
       videoUrl: '',
       subjectname: prefillSubject,
       board: prefillBoard,
-      grade: prefillGrade
+      grade: prefillGrade,
+      medium: prefillMedium
     })
     setOpenAddModuleDialog(true)
   }
@@ -573,7 +584,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         coursename: (selectedCourse?.title || newModule.subjectname || ''),
         subjectname: (newModule.subjectname || selectedCourse?.title || ''),
         board: (newModule.board || (selectedCourse as any)?.board || '').toString(),
-        grade: (newModule.grade || ((selectedCourse as any)?.grade ?? '')).toString()
+        grade: (newModule.grade || ((selectedCourse as any)?.grade ?? '')).toString(),
+        medium: (() => { const mm = newModule.medium || (selectedCourse as any)?.medium || ''; return Array.isArray(mm) ? (mm.filter(Boolean).join(', ') || '') : (mm || ''); })()
       }
 
       // Logic to place video URL in the correct location based on user input
@@ -583,11 +595,11 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         modulePayload.videos = [] // Empty videos array at module level (matching Postman)
         modulePayload.topics = [
           {
-            topicName: newModule.topicName.trim(),
+            topicname: newModule.topicName.trim(), // Backend expects 'topicname' not 'topicName'
             videos: [], // Empty videos array at topic level (matching Postman)
             subtopics: [
               {
-                subtopicName: newModule.subtopicName.trim(),
+                subtopicname: newModule.subtopicName.trim(), // Backend expects 'subtopicname' not 'subtopicName'
                 videos: [
                   createVideoObject(newModule.videoUrl)
                 ]
@@ -601,7 +613,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         modulePayload.videos = [] // Empty videos array at module level (matching Postman)
         modulePayload.topics = [
           {
-            topicName: newModule.topicName.trim(),
+            topicname: newModule.topicName.trim(), // Backend expects 'topicname' not 'topicName'
             videos: [
               createVideoObject(newModule.videoUrl)
             ],
@@ -634,6 +646,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         const prefillBoard = ((selectedCourse as any)?.board || '') as string
         const prefillGrade = (((selectedCourse as any)?.grade ?? '') as any).toString()
         const prefillSubject = (selectedCourse?.title || '') as string
+        const mm = (selectedCourse as any)?.medium
+        const prefillMedium = Array.isArray(mm) ? (mm.filter(Boolean).join(', ') || '') : (mm || '')
         setNewModule({
           title: '',
           topicName: '',
@@ -641,7 +655,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
           videoUrl: '',
           subjectname: prefillSubject,
           board: prefillBoard,
-          grade: prefillGrade
+          grade: prefillGrade,
+          medium: prefillMedium
         })
       } else {
         throw new Error(res.data.message || 'Failed to add module')
@@ -679,12 +694,12 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     
     if (module.topics && module.topics.length > 0) {
       const topic = module.topics[0]
-      topicName = topic.topicName || ''
+      topicName = topic.topicName || topic.topicname || ''
       
       if (topic.subtopics && topic.subtopics.length > 0) {
         // Video URL is in subtopic
         const subtopic = topic.subtopics[0]
-        subtopicName = subtopic.subtopicName || ''
+        subtopicName = subtopic.subtopicName || subtopic.subtopicname || ''
         if (subtopic.videos && subtopic.videos.length > 0) {
           videoUrl = subtopic.videos[0].videoUrl || ''
         }
@@ -725,11 +740,11 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         modulePayload.videos = [] // Empty videos array at module level (matching Postman)
         modulePayload.topics = [
           {
-            topicName: editModule.topicName.trim(),
+            topicname: editModule.topicName.trim(), // Backend expects 'topicname' not 'topicName'
             videos: [], // Empty videos array at topic level (matching Postman)
             subtopics: [
               {
-                subtopicName: editModule.subtopicName.trim(),
+                subtopicname: editModule.subtopicName.trim(), // Backend expects 'subtopicname' not 'subtopicName'
                 videos: [
                   createVideoObject(editModule.videoUrl)
                 ]
@@ -743,7 +758,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         modulePayload.videos = [] // Empty videos array at module level (matching Postman)
         modulePayload.topics = [
           {
-            topicName: editModule.topicName.trim(),
+            topicname: editModule.topicName.trim(), // Backend expects 'topicname' not 'topicName'
             videos: [
               createVideoObject(editModule.videoUrl)
             ],
@@ -1328,6 +1343,19 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                     placeholder={selectedCourse?.title || ''}
                   />
                 </div>
+
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
+                    Medium
+                  </label>
+                  <input
+                    type="text"
+                    value={newModule.medium}
+                    onChange={(e) => setNewModule({...newModule, medium: e.target.value})}
+                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
+                    placeholder={`${(() => { const m = (selectedCourse as any)?.medium; return Array.isArray(m) ? (m.filter(Boolean).join(', ') || '') : (m || 'English'); })()}`}
+                  />
+                </div>
                 
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
@@ -1351,6 +1379,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                     const prefillBoard = ((selectedCourse as any)?.board || '') as string
                     const prefillGrade = (((selectedCourse as any)?.grade ?? '') as any).toString()
                     const prefillSubject = (selectedCourse?.title || '') as string
+                    const mmm = (selectedCourse as any)?.medium
+                    const prefillMedium = Array.isArray(mmm) ? (mmm[0] || '') : (mmm || '')
                     setNewModule({
                       title: '',
                       topicName: '',
@@ -1358,7 +1388,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                       videoUrl: '',
                       subjectname: prefillSubject,
                       board: prefillBoard,
-                      grade: prefillGrade
+                      grade: prefillGrade,
+                      medium: prefillMedium
                     })
                   }}
                   className={`px-4 py-2 rounded-md border ${themeClasses.button}`}
@@ -1634,10 +1665,10 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                       </div>
                       <textarea
                         rows={3}
-                        value={q.question}
+                        value={q.que}
                         onChange={(e) => {
                           const quiz = [...quizForm.quiz]
-                          quiz[idx] = { ...quiz[idx], question: e.target.value }
+                          quiz[idx] = { ...quiz[idx], que: e.target.value }
                           setQuizForm({ ...quizForm, quiz })
                         }}
                         className={`w-full mb-3 px-4 py-2 border rounded-lg ${themeClasses.input}`}
@@ -1648,10 +1679,10 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                           <input
                             key={key}
                             type="text"
-                            value={q.options[key]}
+                            value={q.opt[key]}
                             onChange={(e) => {
                               const quiz = [...quizForm.quiz]
-                              quiz[idx] = { ...quiz[idx], options: { ...quiz[idx].options, [key]: e.target.value } }
+                              quiz[idx] = { ...quiz[idx], opt: { ...quiz[idx].opt, [key]: e.target.value } }
                               setQuizForm({ ...quizForm, quiz })
                             }}
                             className={`w-full px-4 py-2 border rounded-lg ${themeClasses.input}`}
@@ -1754,7 +1785,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                         courseId: selectedCourse._id,
                         board: quizForm.board.trim(),
                         grade: quizForm.grade.trim(),
-                        medium: boardUpper === 'CBSE' ? undefined : quizForm.medium.trim(),
+                        medium: boardUpper === 'CBSE' ? undefined : quizForm.medium.split(',').map(s => s.trim()).filter(Boolean),
                         quiz: quizForm.quiz
                       }
 
