@@ -307,6 +307,53 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
 
   const coursesPerPage = 9
 
+  // Function to fetch all courses across multiple pages
+  const fetchAllCourses = async () => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      let allCourses: Course[] = []
+      let currentPage = 1
+      let hasMorePages = true
+      
+      // Fetch courses page by page until we get all of them
+      while (hasMorePages) {
+        const res = await axios.get<CoursesResponse>('/courses', {
+          params: {
+            limit: 20, // Fetch 20 per page
+            page: currentPage
+          },
+          timeout: 10000
+        })
+        
+        if (res.data.success) {
+          const { data: courses, pagination } = res.data
+          allCourses = [...allCourses, ...courses]
+          
+          // Check if there are more pages
+          hasMorePages = currentPage < pagination.totalPages
+          currentPage++
+        } else {
+          throw new Error('Failed to fetch courses')
+        }
+      }
+      
+      // Set all courses
+      setCourses(allCourses)
+      setFilteredCourses(allCourses)
+      setTotalRecords(allCourses.length)
+      setTotalPages(1) // Since we're showing all on one page
+      setPage(1)
+      
+    } catch (err: any) {
+      console.error('Failed to load all courses:', err)
+      setError('Failed to load all courses. Please try again later.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
     const fetchCourses = async () => {
       setLoading(true)
@@ -314,6 +361,10 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
       
       try {
         const res = await axios.get<CoursesResponse>('/courses', {
+          params: {
+            limit: 50, // Request more courses to show all 18
+            page: 1
+          },
           timeout: 10000
         })
         
@@ -348,12 +399,13 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
       }
     }
     
-    fetchCourses()
+    // Use the new function to fetch all courses
+    fetchAllCourses()
     
     const fromCreateCourse = window.location.search.includes('newCourse=true')
     if (fromCreateCourse) {
       const retryTimer = setTimeout(() => {
-        fetchCourses()
+        fetchAllCourses()
       }, 2000)
       
       return () => clearTimeout(retryTimer)
@@ -1099,6 +1151,21 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
               <p className={themeClasses.textMuted}>{totalRecords} courses available</p>
             </div>
           </div>
+          
+          {/* Refresh Button */}
+          <button
+            onClick={fetchAllCourses}
+            disabled={loading}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all duration-200 cursor-pointer 
+              border shadow-sm bg-gradient-to-r
+              ${darkMode
+                ? 'from-blue-500/20 to-purple-500/20 border-blue-400/40 text-blue-200 hover:from-blue-500/30 hover:to-purple-500/30 focus:ring-blue-400/50 focus:ring-offset-slate-900'
+                : 'from-blue-500/10 to-purple-500/10 border-blue-600/40 text-blue-700 hover:from-blue-500/20 hover:to-purple-500/20 focus:ring-blue-600/50 focus:ring-offset-white'}
+              hover:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2`}
+          >
+            <ArrowPathIcon className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Loading...' : 'Refresh All Courses'}
+          </button>
         </div>
 
         {/* Filter Status */}
