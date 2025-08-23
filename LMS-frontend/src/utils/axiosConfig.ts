@@ -4,6 +4,9 @@ import axios from 'axios';
 // axios.defaults.baseURL = import.meta.env.VITE_API_URL || '';
 console.log('Using Vite proxy for API requests');
 
+// Note: In development mode with React.StrictMode, API calls may appear twice in console
+// This is expected behavior and helps detect side effects
+
 // Add request interceptor to set tenant ID on all requests
 axios.interceptors.request.use(
   (config) => {

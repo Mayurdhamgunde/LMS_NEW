@@ -1,4 +1,4 @@
-import { useState, useEffect, useContext } from 'react'
+import { useState, useEffect, useContext, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
@@ -201,6 +201,9 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
   const [totalRecords, setTotalRecords] = useState(0)
   const [sortByLevel, setSortByLevel] = useState(false)
   
+  // Add ref to prevent double API calls in StrictMode
+  const hasInitialized = useRef(false)
+  
   // Module related states
   const [selectedCourse, setSelectedCourse] = useState<Course | null>(null)
   const [modules, setModules] = useState<Module[]>([])
@@ -355,6 +358,10 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
   }
 
   useEffect(() => {
+    // Prevent double API calls in StrictMode
+    if (hasInitialized.current) return
+    hasInitialized.current = true
+    
     const fetchCourses = async () => {
       setLoading(true)
       setError(null)
