@@ -4,7 +4,23 @@ import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import AuthContext from '../../context/AuthContext'
 
-
+/**
+ * Video Quiz API Integration Notes:
+ * 
+ * This component now uses enhanced video quiz APIs that include course context
+ * to prevent issues when module names are the same across different subjects.
+ * 
+ * Key API endpoints:
+ * - GET /vq/module/:moduleName/course/:courseName - New route for unique module+course queries
+ * - GET /vq/module/:moduleName?courseName=X - Enhanced existing route with course filtering
+ * - GET /vq/title/:videoTitle?courseName=X - Enhanced title search with course context
+ * 
+ * The component includes fallback mechanisms and utility functions for:
+ * - Fetching video quizzes with proper course context
+ * - Checking for existing quizzes to prevent duplicates
+ * - Creating/updating quizzes with validation
+ * - Error handling for course context issues
+ */
 
 // Helper function to create video object without _id (backend will generate it)
 const createVideoObject = (videoUrl: string) => {
@@ -69,7 +85,7 @@ interface VideoQuizForm {
   courseName: string
   board: string
   grade: string
-  medium: string
+  medium: string | string[]
   quiz: QuizQuestionForm[]
 }
 
@@ -238,10 +254,11 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
       quizForm.moduleName,
       quizForm.courseName,
       quizForm.board,
-      quizForm.grade,
-      quizForm.medium
+      quizForm.grade
     ]
-    return required.every((v) => (v || '').toString().trim())
+    const mediumValid = quizForm.board.toUpperCase() === 'CBSE' || 
+      (quizForm.medium && (Array.isArray(quizForm.medium) ? quizForm.medium.length > 0 : quizForm.medium.trim().length > 0))
+    return required.every((v) => (v || '').toString().trim()) && mediumValid
   }
   
   // Delete and Update states
@@ -277,7 +294,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     videoUrl: '',
     subjectname: '',
     board: '',
-    grade: ''
+    grade: '',
+    medium: '' as string | string[]
   })
 
   const [editModule, setEditModule] = useState({
@@ -457,9 +475,9 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     const initialUrl = extractPrimaryVideoUrl(module)
     const courseBoard = (selectedCourse as any)?.board || ''
     const courseGrade = ((selectedCourse as any)?.grade ?? '').toString()
-    // medium may be string or array; pick first when array
+    // medium may be string or array; show all when array
     const m = (selectedCourse as any)?.medium
-    const courseMedium = Array.isArray(m) ? (m[0] || '') : (m || '')
+    const courseMedium = Array.isArray(m) ? (m.filter(Boolean).join(', ') || '') : (m || '')
     // Some tenants return chapter name as `chaptername` instead of `title`
     const chapterName = (module.title || (module as any).chaptername || '') as string
     setQuizForm({
@@ -479,25 +497,135 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     if (selectedCourse && (!courseBoard || !courseGrade || !courseMedium)) {
       fetchCourseContext(selectedCourse._id)
     }
+    
+    // Show informational notification about course context
+    if (selectedCourse?.title) {
+      setNotification({
+        open: true,
+        message: `Creating video quiz for "${chapterName}" in "${selectedCourse.title}". The system will ensure this quiz is associated with the correct course context.`,
+        type: 'info'
+      })
+    }
   }
+
+  // Utility function for making video quiz API calls with proper error handling
+  const fetchVideoQuizByModuleAndCourse = async (moduleName: string, courseName: string) => {
+    try {
+      // First try the new enhanced API route
+      const response = await axios.get(`/vq/module/${encodeURIComponent(moduleName)}/course/${encodeURIComponent(courseName)}`);
+      return response;
+    } catch (error: any) {
+      // If the new route fails, fallback to the old route with query parameters
+      if (error.response?.status === 404) {
+        console.log('New API route not found, trying fallback with query parameters...');
+        try {
+          const fallbackResponse = await axios.get(`/vq/module/${encodeURIComponent(moduleName)}`, {
+            params: { courseName }
+          });
+          return fallbackResponse;
+        } catch (fallbackError: any) {
+          console.log('Fallback API also failed:', fallbackError);
+          throw fallbackError;
+        }
+      }
+      throw error;
+    }
+  };
+
+  // Utility function for fetching video quiz by title with course context
+  const fetchVideoQuizByTitle = async (videoTitle: string, courseName: string) => {
+    try {
+      const response = await axios.get(`/vq/title/${encodeURIComponent(videoTitle)}`, {
+        params: { courseName }
+      });
+      return response;
+    } catch (error: any) {
+      console.error('Error fetching video quiz by title:', error);
+      throw error;
+    }
+  };
+
+  // Utility function for checking if video quiz exists with proper context
+  const checkVideoQuizExists = async (moduleName: string, courseName: string, videoTitle?: string) => {
+    try {
+      if (videoTitle) {
+        // If we have a video title, check by title with course context
+        const response = await fetchVideoQuizByTitle(videoTitle, courseName);
+        return response.data.success && response.data.data;
+      } else {
+        // Otherwise check by module and course
+        const response = await fetchVideoQuizByModuleAndCourse(moduleName, courseName);
+        return response.data.success && response.data.data.quizzes && response.data.data.quizzes.length > 0;
+      }
+    } catch (error) {
+      console.error('Error checking if video quiz exists:', error);
+      return false;
+    }
+  };
+
+  // Utility function for creating or updating video quiz with proper validation
+  const createOrUpdateVideoQuiz = async (quizData: any, isUpdate: boolean = false) => {
+    try {
+      const { moduleName, courseName, videoTitle } = quizData;
+      
+      // Check if video quiz already exists (for create operations)
+      if (!isUpdate) {
+        const exists = await checkVideoQuizExists(moduleName, courseName, videoTitle);
+        if (exists) {
+          throw new Error('A video quiz with this title already exists in this module and course');
+        }
+      }
+      
+      let response;
+      if (isUpdate && currentVideoQuizId) {
+        // Update existing quiz
+        response = await axios.put(`/vq/${currentVideoQuizId}`, quizData);
+      } else {
+        // Create new quiz
+        response = await axios.post('/vq', quizData);
+      }
+      
+      return response;
+    } catch (error: any) {
+      console.error('Error in createOrUpdateVideoQuiz:', error);
+      
+      // Provide more specific error messages for common issues
+      if (error.response?.data?.error) {
+        if (error.response.data.error.includes('already exists')) {
+          throw new Error(`A video quiz with this configuration already exists. This might be due to duplicate module names across different subjects. Please ensure you're working in the correct course context.`);
+        }
+        throw new Error(error.response.data.error);
+      }
+      
+      throw error;
+    }
+  };
 
   const handleDocumentAction = async (module: Module) => {
     const moduleName = (module.title || (module as any).chaptername || '').trim();
-    console.log('Document button clicked for module:', moduleName);
+    const courseName = selectedCourse?.title || '';
+    console.log('Document button clicked for module:', moduleName, 'in course:', courseName);
     console.log('Module data:', module);
+    
     if (!moduleName) {
       alert('Module name is missing. Please ensure the chapter has a name.');
       return;
     }
     
+    if (!courseName) {
+      alert('Course name is missing. Please ensure the course has a title.');
+      return;
+    }
+    
     try {
-      console.log('Making API call to get video quiz by module name...');
-      // First, get the video quiz by module name to find the ID
-      const response = await axios.get(`/vq/module/${encodeURIComponent(moduleName)}`);
+      console.log('Making API call to get video quiz by module name and course...');
+      
+      // Use the utility function for better error handling and fallback support
+      const response = await fetchVideoQuizByModuleAndCourse(moduleName, courseName);
       console.log('API response:', response.data);
       
       if (response.data.success && response.data.data && response.data.data.quizzes && response.data.data.quizzes.length > 0) {
-        // Get the first video quiz ID for this module
+        // Get the first video quiz ID for this module and course combination
         const videoQuizId = response.data.data.quizzes[0]._id;
         console.log('Found video quiz ID:', videoQuizId);
         
@@ -526,7 +654,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
             courseName: (videoQuiz.courseName || videoQuiz.subName || selectedCourse?.title || ''),
             board: videoQuiz.board || '',
             grade: (videoQuiz.grade ?? '').toString(),
-            medium: (videoQuiz.medium ?? ''),
+            medium: Array.isArray(videoQuiz.medium) ? videoQuiz.medium.filter(Boolean).join(', ') : (videoQuiz.medium ?? ''),
             quiz: (videoQuiz.quiz || videoQuiz.questions || [{ ...emptyQuestion }])
           });
           
@@ -541,8 +669,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
           alert('Failed to get video quiz data');
         }
       } else {
-        console.log('No video quiz found for module:', module.title);
-        alert('No video quiz found for this module');
+        console.log('No video quiz found for module:', module.title, 'in course:', courseName);
+        alert('No video quiz found for this module in the selected course');
       }
     } catch (error) {
       console.error('Error fetching video quiz:', error);
@@ -556,6 +684,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     const prefillBoard = ((selectedCourse as any)?.board || '') as string
     const prefillGrade = (((selectedCourse as any)?.grade ?? '') as any).toString()
     const prefillSubject = (selectedCourse?.title || '') as string
+    const m = (selectedCourse as any)?.medium
+    const prefillMedium = Array.isArray(m) ? (m.filter(Boolean).join(', ') || '') : (m || '')
     setNewModule({
       title: '',
       topicName: '',
@@ -563,7 +693,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
       videoUrl: '',
       subjectname: prefillSubject,
       board: prefillBoard,
-      grade: prefillGrade
+      grade: prefillGrade,
+      medium: prefillMedium
     })
     setOpenAddModuleDialog(true)
   }
@@ -580,7 +711,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         coursename: (selectedCourse?.title || newModule.subjectname || ''),
         subjectname: (newModule.subjectname || selectedCourse?.title || ''),
         board: (newModule.board || (selectedCourse as any)?.board || '').toString(),
-        grade: (newModule.grade || ((selectedCourse as any)?.grade ?? '')).toString()
+        grade: (newModule.grade || ((selectedCourse as any)?.grade ?? '')).toString(),
+        medium: (() => { const mm = newModule.medium || (selectedCourse as any)?.medium || ''; return Array.isArray(mm) ? (mm.filter(Boolean).join(', ') || '') : (mm || ''); })()
       }
 
       // Logic to place video URL in the correct location based on user input
@@ -591,10 +723,14 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         modulePayload.topics = [
           {
             topicname: newModule.topicName.trim(), // Backend expects 'topicname' not 'topicName'
+            // Send both casings to be compatible with different backends
+            topicName: newModule.topicName.trim(),
             videos: [], // Empty videos array at topic level (matching Postman)
             subtopics: [
               {
                 subtopicname: newModule.subtopicName.trim(), // Backend expects 'subtopicname' not 'subtopicName'
+                // Send both casings to be compatible with different backends
+                subtopicName: newModule.subtopicName.trim(),
                 videos: [
                   createVideoObject(newModule.videoUrl)
                 ]
@@ -609,6 +745,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         modulePayload.topics = [
           {
             topicname: newModule.topicName.trim(), // Backend expects 'topicname' not 'topicName'
+            // Send both casings to be compatible with different backends
+            topicName: newModule.topicName.trim(),
             videos: [
               createVideoObject(newModule.videoUrl)
             ],
@@ -641,6 +779,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         const prefillBoard = ((selectedCourse as any)?.board || '') as string
         const prefillGrade = (((selectedCourse as any)?.grade ?? '') as any).toString()
         const prefillSubject = (selectedCourse?.title || '') as string
+        const mm = (selectedCourse as any)?.medium
+        const prefillMedium = Array.isArray(mm) ? (mm.filter(Boolean).join(', ') || '') : (mm || '')
         setNewModule({
           title: '',
           topicName: '',
@@ -648,7 +788,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
           videoUrl: '',
           subjectname: prefillSubject,
           board: prefillBoard,
-          grade: prefillGrade
+          grade: prefillGrade,
+          medium: prefillMedium
         })
       } else {
         throw new Error(res.data.message || 'Failed to add module')
@@ -733,10 +874,14 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         modulePayload.topics = [
           {
             topicname: editModule.topicName.trim(), // Backend expects 'topicname' not 'topicName'
+            // Send both casings to be compatible with different backends
+            topicName: editModule.topicName.trim(),
             videos: [], // Empty videos array at topic level (matching Postman)
             subtopics: [
               {
                 subtopicname: editModule.subtopicName.trim(), // Backend expects 'subtopicname' not 'subtopicName'
+                // Send both casings to be compatible with different backends
+                subtopicName: editModule.subtopicName.trim(),
                 videos: [
                   createVideoObject(editModule.videoUrl)
                 ]
@@ -751,6 +896,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         modulePayload.topics = [
           {
             topicname: editModule.topicName.trim(), // Backend expects 'topicname' not 'topicName'
+            // Send both casings to be compatible with different backends
+            topicName: editModule.topicName.trim(),
             videos: [
               createVideoObject(editModule.videoUrl)
             ],
@@ -763,6 +910,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         modulePayload.videos = [
           createVideoObject(editModule.videoUrl)
         ]
+        // Explicitly clear topics when user removed topic/subtopic during edit
+        modulePayload.topics = []
       }
       
       const res = await axios.put(
@@ -1335,6 +1484,21 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                     placeholder={selectedCourse?.title || ''}
                   />
                 </div>
+
+                {newModule.board !== 'CBSE' && (
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
+                      Medium
+                    </label>
+                    <input
+                      type="text"
+                      value={newModule.medium}
+                      onChange={(e) => setNewModule({...newModule, medium: e.target.value})}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
+                      placeholder={`${(() => { const m = (selectedCourse as any)?.medium; return Array.isArray(m) ? (m.filter(Boolean).join(', ') || '') : (m || 'English'); })()}`}
+                    />
+                  </div>
+                )}
                 
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
@@ -1358,6 +1522,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                     const prefillBoard = ((selectedCourse as any)?.board || '') as string
                     const prefillGrade = (((selectedCourse as any)?.grade ?? '') as any).toString()
                     const prefillSubject = (selectedCourse?.title || '') as string
+                    const mmm = (selectedCourse as any)?.medium
+                    const prefillMedium = Array.isArray(mmm) ? (mmm[0] || '') : (mmm || '')
                     setNewModule({
                       title: '',
                       topicName: '',
@@ -1365,7 +1531,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                       videoUrl: '',
                       subjectname: prefillSubject,
                       board: prefillBoard,
-                      grade: prefillGrade
+                      grade: prefillGrade,
+                      medium: prefillMedium
                     })
                   }}
                   className={`px-4 py-2 rounded-md border ${themeClasses.button}`}
@@ -1761,7 +1928,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                         courseId: selectedCourse._id,
                         board: quizForm.board.trim(),
                         grade: quizForm.grade.trim(),
-                        medium: boardUpper === 'CBSE' ? undefined : quizForm.medium.trim(),
+                        medium: boardUpper === 'CBSE' ? undefined : Array.isArray(quizForm.medium) ? quizForm.medium : quizForm.medium.split(',').map((s: string) => s.trim()).filter(Boolean),
                         quiz: quizForm.quiz
                       }
 
@@ -1772,33 +1939,22 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                           throw new Error(`${f} is required`)
                         }
                       }
-                      if (boardUpper !== 'CBSE' && !(quizForm.medium || '').trim()) {
+                      if (boardUpper !== 'CBSE' && (!quizForm.medium || (Array.isArray(quizForm.medium) ? quizForm.medium.length === 0 : !quizForm.medium.trim()))) {
                         throw new Error('medium is required')
                       }
 
-                      let res;
-                      if (isUpdatingQuiz && currentVideoQuizId) {
-                        // Update existing quiz
-                        res = await axios.put(`/vq/${currentVideoQuizId}`, payload)
-                        if (res.data.success) {
-                          setNotification({ open: true, message: 'Video quiz updated successfully!', type: 'success' })
-                          setOpenCreateQuizDialog(false)
-                          setModuleForQuiz(null)
-                          setIsUpdatingQuiz(false)
-                          setCurrentVideoQuizId(null)
-                        } else {
-                          throw new Error(res.data.message || 'Failed to update video quiz')
-                        }
+                      // Use the new utility function for better error handling and course context validation
+                      const res = await createOrUpdateVideoQuiz(payload, isUpdatingQuiz);
+                      
+                      if (res.data.success) {
+                        const message = isUpdatingQuiz ? 'Video quiz updated successfully!' : 'Video quiz created successfully!';
+                        setNotification({ open: true, message, type: 'success' });
+                        setOpenCreateQuizDialog(false);
+                        setModuleForQuiz(null);
+                        setIsUpdatingQuiz(false);
+                        setCurrentVideoQuizId(null);
                       } else {
-                        // Create new quiz
-                        res = await axios.post('/vq', payload)
-                        if (res.data.success) {
-                          setNotification({ open: true, message: 'Video quiz created successfully!', type: 'success' })
-                          setOpenCreateQuizDialog(false)
-                          setModuleForQuiz(null)
-                        } else {
-                          throw new Error(res.data.message || 'Failed to create video quiz')
-                        }
+                        throw new Error(res.data.message || `Failed to ${isUpdatingQuiz ? 'update' : 'create'} video quiz`);
                       }
                     } catch (err: any) {
                       setNotification({ open: true, message: err.response?.data?.error || err.message || 'Failed to create video quiz', type: 'error' })

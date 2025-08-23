@@ -35,6 +35,23 @@ const handleSuccess = (res, data, message = 'Operation successful', statusCode =
   });
 };
 
+// Normalize medium to an array of strings
+const normalizeMedium = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map(v => (typeof v === 'string' ? v : String(v)))
+      .map(v => v.trim())
+      .filter(v => v.length > 0);
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map(v => v.trim())
+      .filter(v => v.length > 0);
+  }
+  return [];
+};
+
 // Helper function to transform request data for storage
 const transformRequestDataForStorage = (data, tenantId) => {
   const transformed = { ...data };
@@ -166,7 +183,7 @@ exports.createVideoQuiz = async (req, res) => {
       courseId,
       board,
       grade,
-      medium,
+      medium: normalizeMedium(medium),
       quiz
     }, tenantId);
  
@@ -190,7 +207,7 @@ exports.createVideoQuiz = async (req, res) => {
       if (!storageData.courseName) missingFields.push('courseName');
     }
     
-    if (!isCBSE && !medium) missingFields.push('medium');
+    if (!isCBSE && (!storageData.medium || storageData.medium.length === 0)) missingFields.push('medium');
     
     if (missingFields.length > 0) {
       return res.status(400).json({
@@ -204,9 +221,12 @@ exports.createVideoQuiz = async (req, res) => {
  
     // Check if video with same title already exists in the same context
     const contextField = tenantId === 'default' ? 'chapterName' : 'moduleName';
+    const courseField = tenantId === 'default' ? 'subName' : 'courseName';
+    
     const existingVideo = await VideoQuizModel.findOne({
       videoTitle: storageData.videoTitle,
       [contextField]: storageData[contextField],
+      [courseField]: storageData[courseField], // Add course filtering to ensure uniqueness
       topicName: storageData.topicName || null,
       subtopicName: storageData.subtopicName || null,
       tenantId
@@ -381,6 +401,7 @@ exports.getVideoQuizById = async (req, res) => {
 exports.getVideoQuizByTitle = async (req, res) => {
   try {
     const { videoTitle } = req.params;
+    const { courseName, courseId } = req.query; // Add course filtering from query params
     const tenantId = req.tenantId;
  
     if (!tenantId) {
@@ -390,13 +411,23 @@ exports.getVideoQuizByTitle = async (req, res) => {
       });
     }
  
+    const filter = {
+      videoTitle: new RegExp(`^${videoTitle}$`, 'i'),
+      tenantId
+    };
+    
+    // Add course filtering to ensure uniqueness
+    if (tenantId === 'default') {
+      if (courseName) filter.subName = courseName;
+      if (courseId) filter.subjectId = courseId;
+    } else {
+      if (courseName) filter.courseName = courseName;
+    }
+ 
     // Get models
     const { VideoQuizModel } = getModels(req.tenantConnection);
  
-    const quiz = await VideoQuizModel.findOne({
-      videoTitle: new RegExp(`^${videoTitle}$`, 'i'),
-      tenantId
-    }).lean();
+    const quiz = await VideoQuizModel.findOne(filter).lean();
    
     if (!quiz) {
       return res.status(404).json({
@@ -449,7 +480,7 @@ exports.updateVideoQuiz = async (req, res) => {
  
     const updatedQuiz = await VideoQuizModel.findOneAndUpdate(
       { _id: id, tenantId },
-      updateData,
+      { $set: { ...updateData, ...(updateData.medium !== undefined ? { medium: normalizeMedium(updateData.medium) } : {}) } },
       { new: true, runValidators: true }
     );
  
@@ -688,6 +719,7 @@ exports.deleteQuizQuestion = async (req, res) => {
 exports.getQuizzesByHierarchy = async (req, res) => {
   try {
     const { moduleName, topicName, subtopicName } = req.params;
+    const { courseName, courseId } = req.query; // Add course filtering from query params
     const tenantId = req.tenantId;
     const { page = 1, limit = 10 } = req.query;
  
@@ -703,8 +735,13 @@ exports.getQuizzesByHierarchy = async (req, res) => {
     // Transform filter based on tenant
     if (tenantId === 'default') {
       filter.chapterName = moduleName;
+      // Add course filtering for default tenant
+      if (courseName) filter.subName = courseName;
+      if (courseId) filter.subjectId = courseId;
     } else {
       filter.moduleName = moduleName;
+      // Add course filtering for non-default tenants
+      if (courseName) filter.courseName = courseName;
     }
     
     if (topicName && topicName !== 'undefined') filter.topicName = topicName;
@@ -735,7 +772,9 @@ exports.getQuizzesByHierarchy = async (req, res) => {
         currentPage: parseInt(page),
         totalPages,
         totalItems: total,
-        itemsPerPage: parseInt(limit)
+        itemsPerPage: parseInt(limit),
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1
       }
     });
   } catch (error) {
@@ -821,7 +860,11 @@ exports.getQuizzesByEducationalContext = async (req, res) => {
       });
     }
  
-    const filter = { tenantId, board, grade, medium };
+    const filter = { tenantId, board, grade };
+    if (medium) {
+      // Match any element equal to the provided medium value
+      filter.medium = { $in: [medium] };
+    }
  
     // Get models
     const { VideoQuizModel } = getModels(req.tenantConnection);
@@ -1059,6 +1102,68 @@ exports.bulkCreateVideoQuizzes = async (req, res) => {
     return handleSuccess(res, transformedQuizzes, 'Bulk video quizzes created successfully', 201);
   } catch (error) {
     return handleError(res, error, 400);
+  }
+};
+ 
+/**
+ * @desc    Get quizzes by module and course (ensures uniqueness when module names are same across subjects)
+ * @route   GET /api/videos/module/:moduleName/course/:courseName
+ * @access  Public
+ */
+exports.getQuizzesByModuleAndCourse = async (req, res) => {
+  try {
+    const { moduleName, courseName } = req.params;
+    const tenantId = req.tenantId;
+    const { page = 1, limit = 10 } = req.query;
+ 
+    if (!tenantId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tenant ID is required'
+      });
+    }
+ 
+    const filter = { tenantId };
+    
+    // Transform filter based on tenant to ensure both module and course are filtered
+    if (tenantId === 'default') {
+      filter.chapterName = moduleName;
+      filter.subName = courseName;
+    } else {
+      filter.moduleName = moduleName;
+      filter.courseName = courseName;
+    }
+ 
+    // Get models
+    const { VideoQuizModel } = getModels(req.tenantConnection);
+ 
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+ 
+    const [quizzes, total] = await Promise.all([
+      VideoQuizModel.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .lean(),
+      VideoQuizModel.countDocuments(filter)
+    ]);
+    
+    // Transform response based on tenant
+    const transformedQuizzes = transformResponseDataForOutput(quizzes, tenantId);
+ 
+    const totalPages = Math.ceil(total / parseInt(limit));
+ 
+    return handleSuccess(res, {
+      quizzes: transformedQuizzes,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages,
+        totalItems: total,
+        itemsPerPage: parseInt(limit)
+      }
+    });
+  } catch (error) {
+    return handleError(res, error);
   }
 };
  

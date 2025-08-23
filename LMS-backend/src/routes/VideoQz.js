@@ -11,6 +11,7 @@ const {
   updateQuizQuestion,
   deleteQuizQuestion,
   getQuizzesByHierarchy,
+  getQuizzesByModuleAndCourse,
   getQuizzesByCourse,
   getQuizzesByEducationalContext,
   searchQuizzes,
@@ -92,6 +93,9 @@ router.get('/title/:videoTitle', getVideoQuizByTitle);
 router.get('/module/:moduleName', getQuizzesByHierarchy);
 router.get('/module/:moduleName/topic/:topicName', getQuizzesByHierarchy);
 router.get('/module/:moduleName/topic/:topicName/subtopic/:subtopicName', getQuizzesByHierarchy);
+
+// New route to ensure uniqueness when module names are same across subjects
+router.get('/module/:moduleName/course/:courseName', getQuizzesByModuleAndCourse);
 
 /**
  * @desc    Get videos by course
