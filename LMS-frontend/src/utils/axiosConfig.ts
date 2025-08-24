@@ -1,8 +1,13 @@
 import axios from 'axios';
+import { API_CONFIG } from '../config/api';
 
-// Configure axios defaults - using proxy instead of base URL
-// axios.defaults.baseURL = import.meta.env.VITE_API_URL || '';
-console.log('Using Vite proxy for API requests');
+// Configure axios defaults - direct API calls without proxy
+axios.defaults.baseURL = API_CONFIG.BASE_URL;
+
+console.log('Using direct API calls to:', API_CONFIG.BASE_URL);
+
+// Note: In development mode with React.StrictMode, API calls may appear twice in console
+// This is expected behavior and helps detect side effects
 
 // Add request interceptor to set tenant ID on all requests
 axios.interceptors.request.use(
@@ -27,8 +32,13 @@ axios.interceptors.request.use(
       config.headers['x-tenant-id'] = tenantId;
     }
     
+    // Set default timeout
+    if (!config.timeout) {
+      config.timeout = API_CONFIG.REQUEST_CONFIG.TIMEOUT;
+    }
+    
     // Log for debugging
-    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
+    console.log(`API Request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
     console.log('Request headers:', JSON.stringify(config.headers));
     console.log('Tenant ID being used:', config.headers['x-tenant-id']);
     

@@ -123,6 +123,13 @@ exports.createNgoCourse = async (req, res) => {
       });
     }
 
+    // Ensure createdBy is set from authenticated user prior to validation
+    // This prevents clients from having to send createdBy explicitly and
+    // avoids validation failures when omitted on some environments
+    if (!req.body.createdBy && req.user && req.user.id) {
+      req.body.createdBy = req.user.id;
+    }
+
     // Validate input data with tenant-specific field mapping
     const validationErrors = validateCourseData(req.body, false, req.tenantId);
     if (validationErrors.length > 0) {

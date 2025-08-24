@@ -155,6 +155,11 @@ const prepareModuleData = (data, tenantId, courseId) => {
     tenantId
   };
 
+  // Ensure medium is always an array of strings
+  if (Object.prototype.hasOwnProperty.call(moduleData, 'medium')) {
+    moduleData.medium = normalizeMedium(moduleData.medium);
+  }
+
   // For default tenant, the pre-save middleware will handle the mapping
   // But we still set the data properly for creation
   if (tenantId === 'default') {
@@ -253,6 +258,24 @@ const getCourseQuery = (courseId, tenantId) => {
   }
 };
 
+// Normalize medium to an array of strings
+const normalizeMedium = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map(v => (typeof v === 'string' ? v : String(v)))
+      .map(v => v.trim())
+      .filter(v => v.length > 0);
+  }
+  if (typeof value === 'string') {
+    // Split by comma and trim each entry; collapse multiple spaces/commas
+    return value
+      .split(',')
+      .map(v => v.trim())
+      .filter(v => v.length > 0);
+  }
+  return [];
+};
+
 // @desc    Create new module
 // @route   POST /api/modules/:courseId/
 // @access  Public
@@ -262,8 +285,14 @@ exports.createNgoModule = async (req, res) => {
     console.log('Course ID:', req.params.courseId);
     console.log('Tenant ID:', req.tenantId);
     
+    // Normalize inputs
+    const requestBody = { ...req.body };
+    if (Object.prototype.hasOwnProperty.call(requestBody, 'medium')) {
+      requestBody.medium = normalizeMedium(requestBody.medium);
+    }
+
     // Validate required fields
-    const validationErrors = validateModuleData(req.body, req.tenantId);
+    const validationErrors = validateModuleData(requestBody, req.tenantId);
     if (validationErrors.length > 0) {
       return res.status(400).json({
         success: false,
@@ -309,7 +338,7 @@ exports.createNgoModule = async (req, res) => {
     }
 
     // Prepare module data based on tenant
-    const moduleData = prepareModuleData(req.body, req.tenantId, req.params.courseId);
+    const moduleData = prepareModuleData(requestBody, req.tenantId, req.params.courseId);
 
     // Create module with timeout protection
     const module = await Promise.race([
@@ -652,8 +681,14 @@ exports.updateNgoModule = async (req, res) => {
       });
     }
 
+    // Normalize inputs
+    const requestBody = { ...req.body };
+    if (Object.prototype.hasOwnProperty.call(requestBody, 'medium')) {
+      requestBody.medium = normalizeMedium(requestBody.medium);
+    }
+
     // Validate input data
-    const validationErrors = validateModuleData(req.body, req.tenantId, true);
+    const validationErrors = validateModuleData(requestBody, req.tenantId, true);
     if (validationErrors.length > 0) {
       return res.status(400).json({
         success: false,
@@ -686,19 +721,19 @@ exports.updateNgoModule = async (req, res) => {
     const updateData = {};
     const excludedFields = ['_id', 'courseId', 'tenantId', 'createdAt', '__v'];
     
-    Object.keys(req.body).forEach(key => {
-      if (!excludedFields.includes(key) && req.body[key] !== undefined && req.body[key] !== null) {
-        updateData[key] = req.body[key];
+    Object.keys(requestBody).forEach(key => {
+      if (!excludedFields.includes(key) && requestBody[key] !== undefined && requestBody[key] !== null) {
+        updateData[key] = requestBody[key];
       }
     });
 
     // For default tenant, map fields to tenant-specific names before updating
     if (req.tenantId === 'default') {
-      if (Object.prototype.hasOwnProperty.call(req.body, 'title') && req.body.title !== undefined && req.body.title !== null) {
-        updateData.chaptername = req.body.title;
+      if (Object.prototype.hasOwnProperty.call(requestBody, 'title') && requestBody.title !== undefined && requestBody.title !== null) {
+        updateData.chaptername = requestBody.title;
       }
-      if (Object.prototype.hasOwnProperty.call(req.body, 'coursename') && req.body.coursename !== undefined && req.body.coursename !== null) {
-        updateData.subjectname = req.body.coursename;
+      if (Object.prototype.hasOwnProperty.call(requestBody, 'coursename') && requestBody.coursename !== undefined && requestBody.coursename !== null) {
+        updateData.subjectname = requestBody.coursename;
       }
       // Do not attempt to map courseId during update since it's excluded and typically immutable
       // If needed, handle mapping explicitly in a separate flow

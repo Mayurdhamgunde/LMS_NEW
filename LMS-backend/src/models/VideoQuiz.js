@@ -2,11 +2,11 @@ const mongoose = require('mongoose');
 
 const quizSchema = new mongoose.Schema(
   {
-    question: {
+    que: {
       type: String,
       required: true
     },
-    options: {
+    opt: {
       a: { type: String, required: true },
       b: { type: String, required: true },
       c: { type: String, required: true },
@@ -110,15 +110,20 @@ const VideoQuizSchema = new mongoose.Schema(
       trim: true
     },
     medium: {
-      type: String,
-      required: function() {
-        try {
-          return (this.board || '').toUpperCase() !== 'CBSE';
-        } catch (e) {
-          return true;
-        }
-      },
-      trim: true
+      type: [String],
+      default: [],
+      validate: {
+        validator: function(arr) {
+          try {
+            const isCBSE = (this.board || '').toUpperCase() === 'CBSE';
+            if (isCBSE) return true;
+            return Array.isArray(arr) && arr.length > 0;
+          } catch (e) {
+            return true;
+          }
+        },
+        message: 'Medium is required unless board is CBSE'
+      }
     },
     
     // The quiz content
@@ -189,6 +194,12 @@ VideoQuizSchema.index({ tenantId: 1, chapterName: 1 });
 VideoQuizSchema.index({ tenantId: 1, subName: 1 });
 VideoQuizSchema.index({ tenantId: 1, subjectId: 1 });
 VideoQuizSchema.index({ tenantId: 1, board: 1, grade: 1, medium: 1 });
+
+// Compound indexes for efficient filtering when module names are same across subjects
+VideoQuizSchema.index({ tenantId: 1, moduleName: 1, courseName: 1 });
+VideoQuizSchema.index({ tenantId: 1, chapterName: 1, subName: 1 });
+VideoQuizSchema.index({ tenantId: 1, videoTitle: 1, moduleName: 1, courseName: 1 });
+VideoQuizSchema.index({ tenantId: 1, videoTitle: 1, chapterName: 1, subName: 1 });
 
 const VideoQuiz = mongoose.models.VideoQuiz || mongoose.model('VideoQuiz', VideoQuizSchema);
 

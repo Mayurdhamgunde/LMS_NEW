@@ -170,7 +170,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
       setError(null)
       
       try {
-        const res = await axios.get<CoursesResponse>('/api/ngo-lms/courses', {
+        const res = await axios.get<CoursesResponse>('/courses', {
           timeout: 10000
         })
         
@@ -239,9 +239,9 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     setModulesLoading(true)
     setModulesError(null)
     try {
-      const res = await axios.get<ModulesResponse>(
-        `http://localhost:2000/api/ngo-lms/courses/${courseId}/modules`
-      )
+              const res = await axios.get<ModulesResponse>(
+          `/courses/${courseId}/modules`
+        )
       if (res.data.success) {
         setModules(res.data.data)
       } else {
@@ -281,7 +281,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
       }
       
       const res = await axios.post(
-        `http://localhost:2000/api/ngo-lms/courses/${selectedCourse._id}/modules`,
+        `/courses/${selectedCourse._id}/modules`,
         modulePayload
       )
       
@@ -356,10 +356,10 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         rating: newModule.rating
       }
       
-      const res = await axios.put(
-        `http://localhost:2000/api/ngo-lms/courses/${selectedCourse._id}/modules/${moduleToEdit._id}`,
-        modulePayload
-      )
+              const res = await axios.put(
+          `/courses/${selectedCourse._id}/modules/${moduleToEdit._id}`,
+          modulePayload
+        )
       
       if (res.data.success) {
         setNotification({
@@ -395,9 +395,9 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     
     setDeletingModule(true)
     try {
-      const res = await axios.delete(
-        `http://localhost:2000/api/ngo-lms/courses/${selectedCourse._id}/modules/${moduleToDelete._id}`
-      )
+              const res = await axios.delete(
+          `/courses/${selectedCourse._id}/modules/${moduleToDelete._id}`
+        )
       
       if (res.data.success) {
         setNotification({
@@ -433,9 +433,9 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     
     setDeleting(true)
     try {
-      const response = await axios.delete(
-        `http://localhost:2000/api/ngo-lms/courses/${courseToDelete._id}`
-      )
+              const response = await axios.delete(
+          `/courses/${courseToDelete._id}`
+        )
       
       if (response.data.success) {
         setNotification({
@@ -579,9 +579,9 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                 setTimeout(() => {
                   const fetchCourses = async () => {
                     try {
-                      const res = await axios.get<CoursesResponse>('/api/ngo-lms/courses', {
-                        timeout: 15000
-                      })
+                              const res = await axios.get<CoursesResponse>('/courses', {
+          timeout: 15000
+        })
                       if (res.data.success) {
                         setCourses(res.data.data)
                         setFilteredCourses(res.data.data)

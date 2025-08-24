@@ -173,14 +173,14 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
       setError(null);
       
       // Fetch course details
-      const courseResponse = await axios.get<ApiResponse<Course>>(`/api/ngo-lms/courses/${courseId}`);
+              const courseResponse = await axios.get<ApiResponse<Course>>(`/courses/${courseId}`);
       
       if (!courseResponse.data.success) {
         throw new Error('Failed to fetch course details');
       }
       
       // Fetch modules
-      const modulesResponse = await axios.get<ApiResponse<Module[]>>(`/api/ngo-lms/courses/${courseId}/modules`);
+              const modulesResponse = await axios.get<ApiResponse<Module[]>>(`/courses/${courseId}/modules`);
       
       if (!modulesResponse.data.success) {
         throw new Error('Failed to fetch modules');
@@ -227,7 +227,7 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
 
   const markAsCompleted = async (moduleId: string) => {
     try {
-      const response = await axios.post(`/api/ngo-lms/modules/${moduleId}/complete`);
+              const response = await axios.post(`/courses/modules/${moduleId}/complete`);
       
       if (response.data.success) {
         setUserProgress(prev => ({ ...prev, [moduleId]: true }));
