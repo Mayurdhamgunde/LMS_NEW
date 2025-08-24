@@ -1473,118 +1473,124 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
       {/* Add Module Dialog */}
       {openAddModuleDialog && (
         <div className={`fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4 ${themeClasses.overlay}`}>
-          <div className={`${themeClasses.dialogBg} rounded-lg shadow-xl w-full max-w-md overflow-hidden border ${themeClasses.dialogBorder}`}>
+          <div className={`${themeClasses.dialogBg} rounded-lg shadow-xl w-full max-w-2xl overflow-hidden border ${themeClasses.dialogBorder}`}>
             <div className="p-6">
               <h2 className={`text-xl font-semibold mb-6 ${themeClasses.text}`}>
                 Add New Chapter
               </h2>
               
-              <div className="space-y-4">
-                <div>
-                  <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                    Chapter Name
-                  </label>
-                  <input
-                    type="text"
-                    value={newModule.title}
-                    onChange={(e) => setNewModule({...newModule, title: e.target.value})}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                    placeholder="Chapter name"
-                  />
-                </div>
-                
-                <div>
-                  <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                    Topic Name
-                  </label>
-                  <input
-                    type="text"
-                    value={newModule.topicName}
-                    onChange={(e) => setNewModule({...newModule, topicName: e.target.value})}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                    placeholder="Topic name"
-                  />
-                </div>
-                
-                <div>
-                  <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                    Subtopic Name
-                  </label>
-                  <input
-                    type="text"
-                    value={newModule.subtopicName}
-                    onChange={(e) => setNewModule({...newModule, subtopicName: e.target.value})}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                    placeholder="Subtopic name"
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-6">
+                {/* Left Column */}
+                <div className="space-y-4">
                   <div>
                     <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                      Board
+                      Chapter Name
                     </label>
                     <input
                       type="text"
-                      value={newModule.board}
-                      onChange={(e) => setNewModule({...newModule, board: e.target.value})}
+                      value={newModule.title}
+                      onChange={(e) => setNewModule({...newModule, title: e.target.value})}
                       className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                      placeholder={(selectedCourse as any)?.board || 'ssc/cbse/...'}
+                      placeholder="Chapter name"
                     />
                   </div>
+                  
                   <div>
                     <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                      Grade
+                      Topic Name
                     </label>
                     <input
                       type="text"
-                      value={newModule.grade}
-                      onChange={(e) => setNewModule({...newModule, grade: e.target.value})}
+                      value={newModule.topicName}
+                      onChange={(e) => setNewModule({...newModule, topicName: e.target.value})}
                       className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                      placeholder={(((selectedCourse as any)?.grade ?? '') as any).toString() || '10'}
+                      placeholder="Topic name"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
+                      Subtopic Name
+                    </label>
+                    <input
+                      type="text"
+                      value={newModule.subtopicName}
+                      onChange={(e) => setNewModule({...newModule, subtopicName: e.target.value})}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
+                      placeholder="Subtopic name"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
+                      Subject Name
+                    </label>
+                    <input
+                      type="text"
+                      value={newModule.subjectname}
+                      onChange={(e) => setNewModule({...newModule, subjectname: e.target.value})}
+                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
+                      placeholder={selectedCourse?.title || ''}
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                    Subject Name
-                  </label>
-                  <input
-                    type="text"
-                    value={newModule.subjectname}
-                    onChange={(e) => setNewModule({...newModule, subjectname: e.target.value})}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                    placeholder={selectedCourse?.title || ''}
-                  />
-                </div>
+                {/* Right Column */}
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
+                        Board
+                      </label>
+                      <input
+                        type="text"
+                        value={newModule.board}
+                        onChange={(e) => setNewModule({...newModule, board: e.target.value})}
+                        className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
+                        placeholder={(selectedCourse as any)?.board || 'ssc/cbse/...'}
+                      />
+                    </div>
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
+                        Grade
+                      </label>
+                      <input
+                        type="text"
+                        value={newModule.grade}
+                        onChange={(e) => setNewModule({...newModule, grade: e.target.value})}
+                        className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
+                        placeholder={(((selectedCourse as any)?.grade ?? '') as any).toString() || '10'}
+                      />
+                    </div>
+                  </div>
 
-                {newModule.board !== 'CBSE' && (
+                  {newModule.board !== 'CBSE' && (
+                    <div>
+                      <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
+                        Medium
+                      </label>
+                      <input
+                        type="text"
+                        value={newModule.medium}
+                        onChange={(e) => setNewModule({...newModule, medium: e.target.value})}
+                        className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
+                        placeholder={`${(() => { const m = (selectedCourse as any)?.medium; return Array.isArray(m) ? (m.filter(Boolean).join(', ') || '') : (m || 'English'); })()}`}
+                      />
+                    </div>
+                  )}
+                  
                   <div>
                     <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                      Medium
+                      Video URL
                     </label>
                     <input
                       type="text"
-                      value={newModule.medium}
-                      onChange={(e) => setNewModule({...newModule, medium: e.target.value})}
+                      value={newModule.videoUrl}
+                      onChange={(e) => setNewModule({...newModule, videoUrl: e.target.value})}
                       className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                      placeholder={`${(() => { const m = (selectedCourse as any)?.medium; return Array.isArray(m) ? (m.filter(Boolean).join(', ') || '') : (m || 'English'); })()}`}
+                      placeholder="https://example.com/video.mp4"
                     />
                   </div>
-                )}
-                
-                <div>
-                  <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                    Video URL
-                  </label>
-                  <input
-                    type="text"
-                    value={newModule.videoUrl}
-                    onChange={(e) => setNewModule({...newModule, videoUrl: e.target.value})}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                    placeholder="https://example.com/video.mp4"
-                  />
                 </div>
               </div>
               
