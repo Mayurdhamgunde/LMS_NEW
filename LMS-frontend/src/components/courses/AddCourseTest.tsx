@@ -30,6 +30,9 @@ const AddCourseTest = () => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState(0);
+  const [coverImage, setCoverImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   
   const [formData, setFormData] = useState<CourseFormData>({
     title: '',
@@ -106,6 +109,24 @@ const AddCourseTest = () => {
     });
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size too large. Please choose a file under 5MB.');
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file.');
+        return;
+      }
+      setCoverImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -118,24 +139,26 @@ const AddCourseTest = () => {
     }
     
     try {
-      const courseData = {
-        title: formData.title,
-        status: formData.status,
-        createdBy: user?._id,
-        grade: Number(formData.grade),
-        board: formData.board,
-        medium: formData.medium,
-      };
-      
-      const config = {
+      setUploading(true);
+
+      const data = new FormData();
+      data.append('title', formData.title);
+      data.append('status', formData.status);
+      if (formData.grade) data.append('grade', String(Number(formData.grade)));
+      if (formData.board) data.append('board', formData.board);
+      if (formData.medium && formData.medium.length > 0) {
+        formData.medium.forEach((m) => data.append('medium', m));
+      }
+      if (user?._id) data.append('createdBy', user._id);
+      if (coverImage) data.append('coverImg', coverImage);
+
+      await axios.post('/courses', data, {
         headers: {
-          'Content-Type': 'application/json',
+          // Let the browser set the correct multipart boundary
           'Authorization': `Bearer ${token}`,
           'x-tenant-id': 'default'
         }
-      };
-      
-      await axios.post('/courses', courseData, config);
+      });
       
       setSuccess('Course created successfully!');
       
@@ -161,6 +184,7 @@ const AddCourseTest = () => {
         setError('An error occurred while creating the course. Please try again.');
       }
     } finally {
+      setUploading(false);
       setLoading(false);
     }
   };
@@ -177,7 +201,7 @@ const AddCourseTest = () => {
             <p className="text-gray-400">Fill in the details below to create your new Curriculum. You can save as draft and come back later.</p>
           </div>
         </div>
-
+        
         <div className="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden">
           {error && (
             <div className="bg-red-500/10 border-b border-red-500/20 text-red-400 p-4 flex items-center gap-2">
@@ -359,6 +383,23 @@ const AddCourseTest = () => {
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ml-2 ${formData.status === 'published' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>{formData.status.charAt(0).toUpperCase() + formData.status.slice(1)}</span>
                       </div>
                       <p className="text-gray-400 text-sm mb-3 line-clamp-2">{'Course description will appear here...'}</p>
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium mb-1">Cover Image</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          disabled={loading || uploading}
+                          className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">Maximum file size: 5MB. Supported formats: JPG, PNG, WebP</p>
+                        {imagePreview && (
+                          <div className="mt-4">
+                            <p className="text-sm font-medium mb-2">Preview:</p>
+                            <img src={imagePreview} alt="Cover preview" className="w-40 h-24 object-cover rounded-lg border border-white/10" />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="p-6">
@@ -396,7 +437,7 @@ const AddCourseTest = () => {
                 type="button"
                 onClick={handleNext}
                 disabled={
-                  loading || 
+                  loading || uploading || 
                   (activeStep === 0 && (!formData.title || !isValidGrade(formData.grade)))
                 }
                 className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-md hover:from-blue-600 hover:to-purple-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -408,13 +449,13 @@ const AddCourseTest = () => {
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={loading || !formData.title || !isValidGrade(formData.grade)}
+                disabled={loading || uploading || !formData.title || !isValidGrade(formData.grade)}
                 className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-md hover:from-green-600 hover:to-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? (
+                {loading || uploading ? (
                   <>
                     <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
-                    Creating Course...
+                    {uploading ? 'Uploading...' : 'Creating Course...'}
                   </>
                 ) : (
                   <>

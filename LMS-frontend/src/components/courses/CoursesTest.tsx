@@ -39,7 +39,11 @@ import {
   MagnifyingGlassIcon,
   ArrowsUpDownIcon,
   VideoCameraIcon,
-  DocumentTextIcon
+  DocumentTextIcon,
+  CalendarIcon,
+  UserIcon,
+  LockClosedIcon,
+  LockOpenIcon
 } from '@heroicons/react/24/outline'
 
 interface Course {
@@ -51,6 +55,7 @@ interface Course {
   status: string
   isPublic: boolean
   iconName?: string
+  coverImg?: string
   progress?: number
   tenantId: string
   createdAt: string
@@ -59,6 +64,14 @@ interface Course {
   board?: string
   grade?: number | string
   medium?: string | string[]
+  // Optional module count for display
+  moduleCount?: number
+  // Creator information (optional in list response)
+  createdBy?: {
+    _id?: string
+    name?: string
+    email?: string
+  }
 }
 
 type CorrectAnswerKey = 'a' | 'b' | 'c' | 'd'
@@ -194,6 +207,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
   const [courses, setCourses] = useState<Course[]>([])
   const [filteredCourses, setFilteredCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingModuleCounts, setLoadingModuleCounts] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [page, setPage] = useState(1)
@@ -342,12 +356,71 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         }
       }
       
-      // Set all courses
+      // Set courses first without module counts to show them immediately
       setCourses(allCourses)
       setFilteredCourses(allCourses)
       setTotalRecords(allCourses.length)
       setTotalPages(1) // Since we're showing all on one page
       setPage(1)
+      
+      // Then fetch module counts in the background and update progressively
+      setLoadingModuleCounts(true)
+      
+      // Fetch module counts in batches to avoid overwhelming the server
+      const batchSize = 5
+      for (let i = 0; i < allCourses.length; i += batchSize) {
+        const batch = allCourses.slice(i, i + batchSize)
+        
+        // Process batch in parallel
+        await Promise.all(batch.map(async (course) => {
+          try {
+            const modulesRes = await axios.get<ModulesResponse>(
+              `/courses/${course._id}/modules`
+            )
+            if (modulesRes.data.success) {
+              const moduleCount = modulesRes.data.count || modulesRes.data.data.length || 0
+              setCourses(prevCourses => 
+                prevCourses.map(c => 
+                  c._id === course._id 
+                    ? { ...c, moduleCount }
+                    : c
+                )
+              )
+              setFilteredCourses(prevCourses => 
+                prevCourses.map(c => 
+                  c._id === course._id 
+                    ? { ...c, moduleCount }
+                    : c
+                )
+              )
+            }
+          } catch (err) {
+            console.warn(`Failed to fetch modules for course ${course._id}:`, err)
+            // Set module count to 0 on error
+            setCourses(prevCourses => 
+              prevCourses.map(c => 
+                c._id === course._id 
+                  ? { ...c, moduleCount: 0 }
+                  : c
+              )
+            )
+            setFilteredCourses(prevCourses => 
+              prevCourses.map(c => 
+                c._id === course._id 
+                  ? { ...c, moduleCount: 0 }
+                  : c
+              )
+            )
+          }
+        }))
+        
+        // Small delay between batches to be nice to the server
+        if (i + batchSize < allCourses.length) {
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+      }
+      
+      setLoadingModuleCounts(false)
       
     } catch (err: any) {
       console.error('Failed to load all courses:', err)
@@ -456,6 +529,23 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
       )
       if (res.data.success) {
         setModules(res.data.data)
+        
+        // Update the course's module count in the courses list
+        const moduleCount = res.data.count || res.data.data.length || 0
+        setCourses(prevCourses => 
+          prevCourses.map(course => 
+            course._id === courseId 
+              ? { ...course, moduleCount }
+              : course
+          )
+        )
+        setFilteredCourses(prevCourses => 
+          prevCourses.map(course => 
+            course._id === courseId 
+              ? { ...course, moduleCount }
+              : course
+          )
+        )
       } else {
         setModulesError('Failed to load modules')
       }
@@ -833,6 +923,23 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         })
         
         fetchModules(selectedCourse._id)
+        
+        // Update the course's module count in the courses list
+        setCourses(prevCourses => 
+          prevCourses.map(course => 
+            course._id === selectedCourse._id 
+              ? { ...course, moduleCount: (course.moduleCount || 0) + 1 }
+              : course
+          )
+        )
+        setFilteredCourses(prevCourses => 
+          prevCourses.map(course => 
+            course._id === selectedCourse._id 
+              ? { ...course, moduleCount: (course.moduleCount || 0) + 1 }
+              : course
+          )
+        )
+        
         setOpenAddModuleDialog(false)
         // Reset add module form
         const prefillBoard = ((selectedCourse as any)?.board || '') as string
@@ -1031,6 +1138,22 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         })
         
         fetchModules(selectedCourse._id)
+        
+        // Update the course's module count in the courses list
+        setCourses(prevCourses => 
+          prevCourses.map(course => 
+            course._id === selectedCourse._id 
+              ? { ...course, moduleCount: Math.max(0, (course.moduleCount || 0) - 1) }
+              : course
+          )
+        )
+        setFilteredCourses(prevCourses => 
+          prevCourses.map(course => 
+            course._id === selectedCourse._id 
+              ? { ...course, moduleCount: Math.max(0, (course.moduleCount || 0) - 1) }
+              : course
+          )
+        )
       } else {
         throw new Error(res.data.message || 'Failed to delete module')
       }
@@ -1155,7 +1278,15 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
             </div>
             <div>
               <h1 className={`text-2xl md:text-3xl font-bold ${themeClasses.text}`}>Courses</h1>
-              <p className={themeClasses.textMuted}>{totalRecords} courses available</p>
+              <p className={themeClasses.textMuted}>
+                {totalRecords} courses available
+                {loadingModuleCounts && (
+                  <span className="ml-2 inline-flex items-center gap-1 text-xs">
+                    <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                    Loading chapter counts...
+                  </span>
+                )}
+              </p>
             </div>
           </div>
           
@@ -1272,26 +1403,69 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                   key={course._id}
                   className={`${themeClasses.cardBg} rounded-lg overflow-hidden border ${themeClasses.border} transition-all hover:shadow-lg hover:-translate-y-1`}
                 >
-                  {/* Course Image/Icon Placeholder */}
-                  <div className={`h-48 ${themeClasses.gradientBg} flex items-center justify-center`}>
-                    <AcademicCapIcon className={`h-16 w-16 opacity-50 ${darkMode ? 'text-white' : 'text-blue-600'}`} />
+                  {/* Course Image with fallback to gradient + icon */}
+                  <div className={`h-48 overflow-hidden ${!course.coverImg ? themeClasses.gradientBg : ''} flex items-center justify-center relative`}>
+                    {course.coverImg ? (
+                      <img 
+                        src={course.coverImg}
+                        alt={course.title}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          if (target.parentElement) {
+                            target.parentElement.classList.add(themeClasses.gradientBg);
+                            target.parentElement.innerHTML = `<svg class=\"h-16 w-16 opacity-50 ${darkMode ? 'text-white' : 'text-blue-600'}\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 14l9-5-9-5-9 5 9 5z\" /><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z\" /></svg>`;
+                          }
+                        }}
+                      />
+                    ) : (
+                      <AcademicCapIcon className={`h-16 w-16 opacity-50 ${darkMode ? 'text-white' : 'text-blue-600'}`} />
+                    )}
+
+                    {/* Course Type Indicator */}
+                    {course.slug && (
+                      <div className="absolute top-2 right-2">
+                        <span className={`px-2 py-1 text-xs rounded-full font-medium bg-white/20 backdrop-blur-sm ${themeClasses.text}`}>
+                          {course.slug}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   
                   {/* Course Content */}
                   <div className="p-6">
                     <div className="flex justify-between items-start mb-4">
-                      <h3 className={`text-xl font-bold line-clamp-2 ${themeClasses.text}`}>{course.title}</h3>
+                      <div className="flex-1">
+                        <h3 className={`text-xl font-bold line-clamp-2 ${themeClasses.text}`}>{course.title}</h3>
+                        {/* Course Status Badge */}
+                        {course.status && (
+                          <div className="mt-2">
+                            <span className={`px-2 py-1 text-xs rounded-full font-medium ${
+                              course.status === 'published' 
+                                ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
+                                : course.status === 'draft'
+                                ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400'
+                                : 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400'
+                            }`}>
+                              {course.status.charAt(0).toUpperCase() + course.status.slice(1)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                       {user && (user.role === 'instructor' || user.role === 'admin') && (
                         <div className="flex gap-2">
                           <button 
                             onClick={() => handleEditCourse(course)}
                             className={`p-1 rounded-md transition-colors ${themeClasses.hoverBg}`}
+                            title="Edit Course"
                           >
                             <PencilIcon className={`h-5 w-5 ${themeClasses.textAccent}`} />
                           </button>
                           <button 
                             onClick={() => handleDeleteCourse(course)}
                             className={`p-1 rounded-md transition-colors ${themeClasses.hoverBg}`}
+                            title="Delete Course"
                           >
                             <TrashIcon className="h-5 w-5 text-red-400" />
                           </button>
@@ -1301,33 +1475,97 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                     
                     <p className={`line-clamp-3 mb-4 ${themeClasses.textMuted}`}>{course.description}</p>
                     
-                    <div className="flex justify-between items-center mb-4">
-                      <span className={`text-sm ${themeClasses.textMuted}`}>
-                        Created: {formatDate(course.createdAt)}
-                      </span>
-                      <span className={`text-lg font-bold ${
-                        course.price !== undefined ? themeClasses.textAccent : 'text-green-500'
-                      }`}>
-                        {course.price !== undefined ? `$${course.price.toFixed(2)}` : 'Free'}
-                      </span>
+                    {/* Educational Context Information */}
+                    <div className="mb-4 space-y-2">
+                      {(course.board || course.grade || course.medium) && (
+                        <div className="flex flex-wrap gap-2">
+                          {course.board && (
+                            <span className={`px-2 py-1 text-xs rounded-full ${themeClasses.gradientBg} ${themeClasses.textAccent} font-medium`}>
+                              {course.board}
+                            </span>
+                          )}
+                          {course.grade && (
+                            <span className={`px-2 py-1 text-xs rounded-full ${themeClasses.gradientBg} ${themeClasses.textAccent} font-medium`}>
+                              Grade {course.grade}
+                            </span>
+                          )}
+                          {course.medium && (
+                            <span className={`px-2 py-1 text-xs rounded-full ${themeClasses.gradientBg} ${themeClasses.textAccent} font-medium`}>
+                              {Array.isArray(course.medium) ? course.medium.join(', ') : course.medium}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                     
-                    <div>
-                    {user && (user.role === 'instructor' || user.role === 'admin') && (
-                      <button
-                        onClick={() => handleViewModules(course)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all duration-200 cursor-pointer 
-                          border shadow-sm bg-gradient-to-r
-                          ${darkMode
-                            ? 'from-blue-500/20 to-purple-500/20 border-blue-400/40 text-blue-200 hover:from-blue-500/30 hover:to-purple-500/30 focus:ring-blue-400/50 focus:ring-offset-slate-900'
-                            : 'from-blue-500/10 to-purple-500/10 border-blue-600/40 text-blue-700 hover:from-blue-500/20 hover:to-purple-500/20 focus:ring-blue-600/50 focus:ring-offset-white'}
-                          hover:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2`}
-                      >
-                        <PlusIcon className="h-5 w-5" />
-                        Add Chapters
-                      </button>
-                    )}
-                  </div>
+                    <div className="mb-4">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                        <span className={`text-sm ${themeClasses.textMuted} inline-flex items-center gap-1`}>
+                          <CalendarIcon className="h-4 w-4" />
+                          <span>Created: {formatDate(course.createdAt)}</span>
+                        </span>
+                        {course.createdBy && (course.createdBy.name || course.createdBy.email) && (
+                          <span className={`text-sm ${themeClasses.textMuted} inline-flex items-center gap-1`}>
+                            <UserIcon className="h-4 w-4" />
+                            <span>Created by: {course.createdBy.name || course.createdBy.email}</span>
+                          </span>
+                        )}
+                        {course.updatedAt && course.updatedAt !== course.createdAt && (
+                          <span className={`text-sm ${themeClasses.textMuted} inline-flex items-center gap-1`}>
+                            <ArrowPathIcon className="h-4 w-4" />
+                            <span>Updated: {formatDate(course.updatedAt)}</span>
+                          </span>
+                        )}
+                      </div>
+                      {/* Progress Indicator */}
+                      {course.progress !== undefined && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <div className="w-24 bg-gray-200 rounded-full h-2 dark:bg-gray-700">
+                            <div 
+                              className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full transition-all duration-300" 
+                              style={{ width: `${course.progress}%` }}
+                            ></div>
+                          </div>
+                          <span className={`text-xs ${themeClasses.textMuted}`}>
+                            {course.progress}% Complete
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      {/* Course Stats */}
+                      <div className="flex items-center gap-4 text-sm">
+                        <span className={`${themeClasses.textMuted} flex items-center gap-1`}>
+                          <AcademicCapIcon className="h-4 w-4" />
+                          <span>
+                            Chapters: {
+                              loadingModuleCounts && course.moduleCount === undefined 
+                                ? (
+                                  <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                                )
+                                : (course.moduleCount || 0)
+                            }
+                          </span>
+                        </span>
+                      </div>
+                      
+                      {/* Action Buttons */}
+                      {user && (user.role === 'instructor' || user.role === 'admin') && (
+                        <button
+                          onClick={() => handleViewModules(course)}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-semibold transition-all duration-200 cursor-pointer 
+                            border shadow-sm bg-gradient-to-r
+                            ${darkMode
+                              ? 'from-blue-500/20 to-purple-500/20 border-blue-400/40 text-blue-200 hover:from-blue-500/30 hover:to-purple-500/30 focus:ring-blue-400/50 focus:ring-offset-slate-900'
+                              : 'from-blue-500/10 to-purple-500/10 border-blue-600/40 text-blue-700 hover:from-blue-500/20 hover:to-purple-500/20 focus:ring-blue-600/50 focus:ring-offset-white'}
+                            hover:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2`}
+                        >
+                          <PlusIcon className="h-5 w-5" />
+                          Add Chapters
+                        </button>
+                      )}
+                    </div>
 
                   </div>
                 </div>
