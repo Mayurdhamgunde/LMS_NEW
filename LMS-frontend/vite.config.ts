@@ -6,26 +6,7 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [tailwindcss(),react()],
   server: {
-    proxy: {
-      '/api': {
-        target: 'http://localhost:2000',
-        changeOrigin: true,
-      },
-      '/courses': {
-        target: 'http://localhost:2000',
-        changeOrigin: true,
-      },
-      '/vq': {
-        target: 'http://localhost:2000',
-        changeOrigin: true,
-      },
-      '/uploads': {
-        target: 'http://localhost:2000',
-        changeOrigin: true,
-      }
-    },
+    // Proxy configuration removed - using direct API calls
     allowedHosts: ['4f6f-152-59-7-120.ngrok-free.app'],
   },
-  
-  
 }) 

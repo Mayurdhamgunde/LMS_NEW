@@ -36,7 +36,15 @@ if (!fs.existsSync(uploadsDir)) {
 // Middleware
 app.use(express.json());
 app.use(cors({
-  origin: '*',
+  origin: [
+    'http://localhost:5173',  // Vite dev server
+    'http://localhost:3000',  // Alternative dev port
+    'http://localhost:4173',  // Vite preview
+    'http://127.0.0.1:5173', // Alternative localhost
+    'http://127.0.0.1:3000', // Alternative localhost
+    'http://127.0.0.1:4173'  // Alternative localhost
+  ],
+  credentials: true,
   exposedHeaders: ['Content-Disposition']
 }));
 app.use(fileUpload({
