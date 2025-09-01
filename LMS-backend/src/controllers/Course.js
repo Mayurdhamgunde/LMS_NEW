@@ -4,6 +4,8 @@ const fs = require('fs');
 const slugify = require('slugify');
 const mongoose = require('mongoose');
 const { switchTenant } = require('../utils/tenantUtils');
+const { upload } = require('../config/cloudinary');
+const multer = require('multer');
 
 // Helper function to get the correct model
 const getCourseModel = (tenantConnection) => {
@@ -110,95 +112,117 @@ const validateCourseData = (data, isUpdate = false, tenantId = null) => {
 // @desc    Create new Course
 // @route   POST /api/courses
 // @access  Private/admin/Instructor
-exports.createNgoCourse = async (req, res) => {
-  try {
-    console.log('Creating NGO course with data:', JSON.stringify(req.body));
-    console.log('Tenant ID:', req.tenantId);
-    
-    // Validate tenant ID
-    if (!req.tenantId) {
-      return res.status(400).json({
+exports.createNgoCourse = [
+  upload.single('coverImg'), // Add multer middleware for Cloudinary
+  async (req, res) => {
+    try {
+      console.log('Creating NGO course with data:', JSON.stringify(req.body));
+      console.log('Uploaded file:', req.file);
+      console.log('Tenant ID:', req.tenantId);
+      
+      // Validate tenant ID
+      if (!req.tenantId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Tenant ID is required'
+        });
+      }
+
+      // Ensure createdBy is set from authenticated user
+      if (!req.body.createdBy && req.user && req.user.id) {
+        req.body.createdBy = req.user.id;
+      }
+
+      // Validate input data with tenant-specific field mapping
+      const validationErrors = validateCourseData(req.body, false, req.tenantId);
+      if (validationErrors.length > 0) {
+        return res.status(400).json({
+          success: false,
+          error: validationErrors.join(', ')
+        });
+      }
+
+      // Map fields based on tenant before saving
+      const mappedData = mapFieldsForTenant(req.body, req.tenantId);
+      
+      // Add tenant to mapped data
+      mappedData.tenantId = req.tenantId;
+
+      // Add Cloudinary image URL if uploaded
+      if (req.file) {
+        mappedData.coverImg = req.file.path; // Cloudinary URL
+        console.log('Cover image uploaded to:', req.file.path);
+      }
+
+      // Set default values according to schema
+      if (!mappedData.courseProgress) mappedData.courseProgress = 0;
+      if (!mappedData.enrolledStd) mappedData.enrolledStd = 0;
+      if (!mappedData.rating) mappedData.rating = 0;
+      if (!mappedData.price) mappedData.price = 0;
+      if (!mappedData.status) mappedData.status = 'draft';
+      if (!mappedData.medium) mappedData.medium = [];
+
+      // Use tenant-specific model
+      const CourseModel = getCourseModel(req.tenantConnection);
+
+      // Create course with mapped data
+      const course = await CourseModel.create(mappedData);
+
+      // Map fields back for response
+      const responseData = mapFieldsFromTenant(course.toObject(), req.tenantId);
+
+      console.log('NGO course created successfully:', course._id);
+
+      res.status(201).json({
+        success: true,
+        data: responseData,
+        message: 'Course created successfully'
+      });
+
+    } catch (err) {
+      console.error(`Error in createNgoCourse: ${err.message}`);
+      console.error(`Error stack: ${err.stack}`);
+      
+      // Handle multer errors
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({
+            success: false,
+            error: 'File size too large. Maximum size is 5MB.'
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          error: 'File upload error: ' + err.message
+        });
+      }
+      
+      // Handle validation errors
+      if (err.name === 'ValidationError') {
+        const messages = Object.values(err.errors).map(val => val.message);
+        return res.status(400).json({
+          success: false,
+          error: messages.join(', ')
+        });
+      }
+      
+      // Handle duplicate key error
+      if (err.code === 11000) {
+        const field = Object.keys(err.keyPattern)[0];
+        return res.status(400).json({
+          success: false,
+          error: `A course with this ${field} already exists`
+        });
+      }
+
+      // Generic server error
+      res.status(500).json({
         success: false,
-        error: 'Tenant ID is required'
+        error: 'Internal server error'
       });
     }
-
-    // Ensure createdBy is set from authenticated user prior to validation
-    // This prevents clients from having to send createdBy explicitly and
-    // avoids validation failures when omitted on some environments
-    if (!req.body.createdBy && req.user && req.user.id) {
-      req.body.createdBy = req.user.id;
-    }
-
-    // Validate input data with tenant-specific field mapping
-    const validationErrors = validateCourseData(req.body, false, req.tenantId);
-    if (validationErrors.length > 0) {
-      return res.status(400).json({
-        success: false,
-        error: validationErrors.join(', ')
-      });
-    }
-
-    // Map fields based on tenant before saving
-    const mappedData = mapFieldsForTenant(req.body, req.tenantId);
-    
-    // Add tenant to mapped data
-    mappedData.tenantId = req.tenantId;
-
-    // Set default values according to schema
-    if (!mappedData.courseProgress) mappedData.courseProgress = 0;
-    if (!mappedData.enrolledStd) mappedData.enrolledStd = 0;
-    if (!mappedData.rating) mappedData.rating = 0;
-    if (!mappedData.price) mappedData.price = 0;
-    if (!mappedData.status) mappedData.status = 'draft';
-    if (!mappedData.medium) mappedData.medium = [];
-
-    // Use tenant-specific model
-    const CourseModel = getCourseModel(req.tenantConnection);
-
-    // Create course with mapped data
-    const course = await CourseModel.create(mappedData);
-
-    // Map fields back for response
-    const responseData = mapFieldsFromTenant(course.toObject(), req.tenantId);
-
-    console.log('NGO course created successfully:', course._id);
-
-    res.status(201).json({
-      success: true,
-      data: responseData,
-      message: 'Course created successfully'
-    });
-
-  } catch (err) {
-    console.error(`Error in createNgoCourse: ${err.message}`);
-    console.error(`Error stack: ${err.stack}`);
-    
-    // Handle validation errors
-    if (err.name === 'ValidationError') {
-      const messages = Object.values(err.errors).map(val => val.message);
-      return res.status(400).json({
-        success: false,
-        error: messages.join(', ')
-      });
-    }
-    
-    // Handle duplicate key error
-    if (err.code === 11000) {
-      const field = Object.keys(err.keyPattern)[0];
-      return res.status(400).json({
-        success: false,
-        error: `A course with this ${field} already exists`
-      });
-    }
-
-    // Generic server error
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error'
-    });
   }
-};
+];
 
 // @desc    Get all NGO courses for the tenant
 // @route   GET /api/courses
@@ -416,7 +440,9 @@ exports.getNgoCourse = async (req, res) => {
 // @desc    Update NGO course
 // @route   PUT /api/courses/:id
 // @access  Private/Instructor
-exports.updateNgoCourse = async (req, res) => {
+exports.updateNgoCourse = [
+  upload.single('coverImg'),
+  async (req, res) => {
   try {
     const courseId = req.params.id;
     console.log('Updating NGO course with ID:', courseId);
@@ -460,6 +486,11 @@ exports.updateNgoCourse = async (req, res) => {
         updateData[key] = mappedData[key];
       }
     });
+
+    // If a new cover image was uploaded, set it
+    if (req.file && req.file.path) {
+      updateData.coverImg = req.file.path;
+    }
 
     // Add updatedAt timestamp
     updateData.updatedAt = new Date();
@@ -523,7 +554,8 @@ exports.updateNgoCourse = async (req, res) => {
       error: 'Internal server error'
     });
   }
-};
+}
+];
 
 // @desc    Delete NGO course
 // @route   DELETE /api/courses/:id

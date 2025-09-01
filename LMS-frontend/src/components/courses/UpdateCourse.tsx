@@ -12,7 +12,8 @@ import {
   GlobeAltIcon,
   LockClosedIcon,
   EyeIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  PhotoIcon
 } from '@heroicons/react/24/outline'
 
 interface CourseFormData {
@@ -41,11 +42,11 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
     skeletonBg: darkMode ? 'bg-white/10' : 'bg-gray-200',
     inputBg: darkMode ? 'bg-gray-700' : 'bg-white',
     input: darkMode 
-      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500',
+      ? 'bg-white/5 border-white/10 text-white placeholder-gray-400 focus:border-blue-400' 
+      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:border-blue-500',
     button: darkMode
-      ? 'border-white/10 text-white hover:bg-white/5'
-      : 'border-gray-300 text-gray-700 hover:bg-gray-50',
+      ? 'border-white/10 text-white hover:bg-white/5 hover:text-white'
+      : 'border-gray-300 text-gray-600 hover:bg-gray-100 hover:text-gray-800',
     dialogBg: darkMode ? 'bg-gray-800' : 'bg-white',
     dialogBorder: darkMode ? 'border-gray-700' : 'border-gray-200',
     overlay: darkMode ? 'bg-black/50' : 'bg-gray-900/50',
@@ -76,6 +77,8 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState(0);
+  const [coverImage, setCoverImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   
   const [formData, setFormData] = useState<CourseFormData>({
     title: '',
@@ -90,6 +93,24 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
     const n = Number(g);
     return Number.isInteger(n) && n >= 1 && n <= 12;
   };
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size too large. Please choose a file under 5MB.');
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file.');
+        return;
+      }
+      setCoverImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
 
   const mediumOptions = [
     { value: 'Semi-English', label: 'Semi-English' },
@@ -198,23 +219,22 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
     }
     
     try {
-      const courseData = {
-        title: formData.title,
-        status: formData.status,
-        grade: Number(formData.grade),
-        board: formData.board,
-        medium: formData.medium,
-      };
-      
-      const config = {
+      const data = new FormData();
+      data.append('title', formData.title);
+      data.append('status', formData.status);
+      if (formData.grade) data.append('grade', String(Number(formData.grade)));
+      if (formData.board) data.append('board', formData.board);
+      if (formData.medium && formData.medium.length > 0) {
+        formData.medium.forEach((m) => data.append('medium', m));
+      }
+      if (coverImage) data.append('coverImg', coverImage);
+
+      const response = await axios.put(`/courses/${id}`, data, {
         headers: {
-          'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
           'x-tenant-id': 'default'
         }
-      };
-      
-      const response = await axios.put(`/courses/${id}`, courseData, config);
+      });
       
       setSuccess('Course updated successfully!');
       
@@ -253,10 +273,10 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Subject Name *</label>
+                <label className={`block text-sm font-medium mb-2 ${themeClasses.textSecondary}`}>Subject Name *</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <AcademicCapIcon className="h-5 w-5 text-gray-400" />
+                    <AcademicCapIcon className={`h-5 w-5 ${themeClasses.textMuted}`} />
                   </div>
                   <input
                     type="text"
@@ -264,37 +284,37 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
                     value={formData.title}
                     onChange={handleChange}
                     disabled={loading}
-                    className="block w-full pl-10 pr-3 py-3 bg-white/5 border border-white/10 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-gray-400"
+                    className={`block w-full pl-10 pr-3 py-3 border ${themeClasses.input} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
                     placeholder="e.g., Mathematics"
                     required
                   />
                 </div>
                 {!formData.title && error && (
-                  <p className="mt-1 text-sm text-red-400">Subject name is required</p>
+                  <p className={`mt-1 text-sm ${themeClasses.notification.error}`}>Subject name is required</p>
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Grade Level *</label>
+                <label className={`block text-sm font-medium mb-2 ${themeClasses.textSecondary}`}>Grade Level *</label>
                 <input
                   type="number"
                   name="grade"
                   value={formData.grade}
                   onChange={handleChange}
                   disabled={loading}
-                  className="block w-full px-3 py-3 bg-white/5 border border-white/10 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-gray-400"
+                  className={`block w-full px-3 py-3 border ${themeClasses.input} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
                   placeholder="e.g., 10"
                   min="1"
                   max="12"
                   step="1"
                 />
                 {(!isValidGrade(formData.grade)) && error && (
-                  <p className="mt-1 text-sm text-red-400">Grade must be an integer between 1 and 12</p>
+                  <p className={`mt-1 text-sm ${themeClasses.notification.error}`}>Grade must be an integer between 1 and 12</p>
                 )}
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Educational Board</label>
+              <label className={`block text-sm font-medium mb-2 ${themeClasses.textSecondary}`}>Educational Board</label>
               <Select
                 name="board"
                 value={boardOptions.find(opt => opt.value === formData.board) || null}
@@ -306,26 +326,38 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
                 styles={{
                   control: (base) => ({
                     ...base,
-                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                    borderColor: 'rgba(255, 255, 255, 0.1)',
-                    color: 'white',
+                    backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'white',
+                    borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : '#d1d5db',
+                    color: darkMode ? 'white' : '#111827',
                     minHeight: '14px'
                   }),
-                  menu: (base) => ({ ...base, backgroundColor: '#1f2937', color: 'white' }),
+                  menu: (base) => ({ 
+                    ...base, 
+                    backgroundColor: darkMode ? '#1f2937' : 'white',
+                    color: darkMode ? 'white' : '#111827'
+                  }),
                   option: (base, { isFocused }) => ({
                     ...base,
-                    backgroundColor: isFocused ? '#374151' : '#1f2937',
-                    color: 'white'
+                    backgroundColor: isFocused 
+                      ? (darkMode ? '#374151' : '#f3f4f6')
+                      : (darkMode ? '#1f2937' : 'white'),
+                    color: darkMode ? 'white' : '#111827'
                   }),
-                  singleValue: (base) => ({ ...base, color: 'white' }),
-                  input: (base) => ({ ...base, color: 'white' })
+                  singleValue: (base) => ({ 
+                    ...base, 
+                    color: darkMode ? 'white' : '#111827' 
+                  }),
+                  input: (base) => ({ 
+                    ...base, 
+                    color: darkMode ? 'white' : '#111827' 
+                  })
                 }}
               />
             </div>
 
             {formData.board !== 'CBSE' && (
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Medium</label>
+                <label className={`block text-sm font-medium mb-2 ${themeClasses.textSecondary}`}>Medium</label>
                 <Select
                   isMulti
                   name="medium"
@@ -338,25 +370,46 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
                   styles={{
                     control: (base) => ({
                       ...base,
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                      borderColor: 'rgba(255, 255, 255, 0.1)',
-                      color: 'white',
+                      backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'white',
+                      borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : '#d1d5db',
+                      color: darkMode ? 'white' : '#111827',
                       minHeight: '14px'
                     }),
-                    menu: (base) => ({ ...base, backgroundColor: '#1f2937', color: 'white' }),
+                    menu: (base) => ({ 
+                      ...base, 
+                      backgroundColor: darkMode ? '#1f2937' : 'white',
+                      color: darkMode ? 'white' : '#111827'
+                    }),
                     option: (base, { isFocused }) => ({
                       ...base,
-                      backgroundColor: isFocused ? '#374151' : '#1f2937',
-                      color: 'white'
+                      backgroundColor: isFocused 
+                        ? (darkMode ? '#374151' : '#f3f4f6')
+                        : (darkMode ? '#1f2937' : 'white'),
+                      color: darkMode ? 'white' : '#111827'
                     }),
-                    singleValue: (base) => ({ ...base, color: 'white' }),
-                    input: (base) => ({ ...base, color: 'white' }),
-                    multiValue: (base) => ({ ...base, backgroundColor: 'rgba(59, 130, 246, 0.2)' }),
-                    multiValueLabel: (base) => ({ ...base, color: 'white' }),
+                    singleValue: (base) => ({ 
+                      ...base, 
+                      color: darkMode ? 'white' : '#111827' 
+                    }),
+                    input: (base) => ({ 
+                      ...base, 
+                      color: darkMode ? 'white' : '#111827' 
+                    }),
+                    multiValue: (base) => ({ 
+                      ...base, 
+                      backgroundColor: darkMode ? 'rgba(59, 130, 246, 0.2)' : '#dbeafe' 
+                    }),
+                    multiValueLabel: (base) => ({ 
+                      ...base, 
+                      color: darkMode ? 'white' : '#1e40af' 
+                    }),
                     multiValueRemove: (base) => ({
                       ...base,
-                      color: 'white',
-                      ':hover': { backgroundColor: 'rgba(59,130,246,0.3)', color: 'white' }
+                      color: darkMode ? 'white' : '#1e40af',
+                      ':hover': { 
+                        backgroundColor: darkMode ? 'rgba(59,130,246,0.3)' : '#bfdbfe', 
+                        color: darkMode ? 'white' : '#1e40af' 
+                      }
                     })
                   }}
                 />
@@ -368,7 +421,7 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
         return (
           <div className="space-y-8">
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-4">Course Status</label>
+              <label className={`block text-sm font-medium mb-4 ${themeClasses.textSecondary}`}>Course Status</label>
               <div className="grid grid-cols-3 gap-4">
                 {[
                   { value: 'draft', label: 'Draft', desc: 'Work in progress', color: 'yellow' },
@@ -376,16 +429,70 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
                 ].map((status) => (
                   <label key={status.value} className="cursor-pointer">
                     <input type="radio" name="status" value={status.value} checked={formData.status === status.value} onChange={handleChange} disabled={loading} className="sr-only peer" />
-                    <div className={`p-4 rounded-lg border-2 transition-all peer-checked:border-blue-500 peer-checked:bg-blue-500/10 ${formData.status === status.value ? 'border-blue-500 bg-blue-500/10' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
-                      <div className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${status.color === 'yellow' ? 'bg-yellow-500/20 text-yellow-400' : status.color === 'green' ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                    <div className={`p-4 rounded-lg border-2 transition-all peer-checked:border-blue-500 peer-checked:bg-blue-500/10 ${
+                      formData.status === status.value 
+                        ? darkMode 
+                          ? 'border-blue-500 bg-blue-500/10' 
+                          : 'border-blue-500 bg-blue-50'
+                        : darkMode 
+                          ? 'border-white/10 bg-white/5 hover:bg-white/10' 
+                          : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <div className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${
+                        status.color === 'yellow' 
+                          ? darkMode ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-600'
+                          : status.color === 'green' 
+                          ? darkMode ? 'bg-green-500/20 text-green-400' : 'bg-green-100 text-green-600'
+                          : darkMode ? 'bg-gray-500/20 text-gray-400' : 'bg-gray-100 text-gray-600'
+                      }`}>
                         <div className="w-3 h-3 rounded-full bg-current"></div>
                       </div>
-                      <h4 className="font-medium text-white mb-1">{status.label}</h4>
-                      <p className="text-sm text-gray-400">{status.desc}</p>
+                      <h4 className={`font-medium mb-1 ${themeClasses.text}`}>{status.label}</h4>
+                      <p className={`text-sm ${themeClasses.textMuted}`}>{status.desc}</p>
                     </div>
                   </label>
                 ))}
               </div>
+            </div>
+
+            {/* Cover Image Upload */}
+            <div className="mt-6">
+              <div className="mb-3 flex items-center gap-2">
+                <PhotoIcon className={`h-5 w-5 ${themeClasses.textAccent}`} />
+                <span className={`font-semibold text-base md:text-lg tracking-wide ${themeClasses.text}`}>Cover Image</span>
+              </div>
+              <label htmlFor="cover-upload-update" className={`group block cursor-pointer rounded-xl border-2 border-dashed transition-all focus-within:ring-2 focus-within:ring-blue-500/50 ${
+                darkMode 
+                  ? 'border-white/15 bg-white/5 hover:bg-white/10' 
+                  : 'border-gray-300 bg-gray-50 hover:bg-gray-100'
+              }`}>
+                <div className="flex items-center justify-between p-5 md:p-6">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center group-hover:bg-blue-500/30 ${
+                      darkMode ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-600'
+                    }`}>
+                      <EyeIcon className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <p className={`text-sm font-semibold ${themeClasses.text}`}>Click to upload new cover</p>
+                      <p className={`text-xs ${themeClasses.textMuted}`}>High‑quality banner works best. JPG, PNG, WebP up to 5MB</p>
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center px-3.5 py-2 rounded-md text-sm font-semibold bg-blue-500 text-white group-hover:bg-blue-600 shadow-sm">Choose File</span>
+                </div>
+              </label>
+              <input id="cover-upload-update" type="file" accept="image/*" onChange={handleImageUpload} disabled={loading} className="sr-only" />
+              {coverImage && (
+                <p className={`mt-2 text-xs ${themeClasses.textMuted}`}>Selected: {coverImage.name}</p>
+              )}
+              {imagePreview && (
+                <div className="mt-4">
+                  <p className={`text-sm font-medium mb-2 ${themeClasses.text}`}>Preview:</p>
+                  <img src={imagePreview} alt="Cover preview" className={`w-40 h-24 object-cover rounded-lg border ${
+                    darkMode ? 'border-white/10' : 'border-gray-200'
+                  }`} />
+                </div>
+              )}
             </div>
           </div>
         );
@@ -686,7 +793,7 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
               type="button"
               onClick={activeStep === 0 ? () => navigate(-1) : handleBack}
               disabled={loading}
-              className={`inline-flex items-center px-6 py-3 border rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              className={`inline-flex items-center px-6 py-3 border rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                 darkMode 
                   ? 'border-white/10 text-white hover:bg-white/5' 
                   : 'border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -704,7 +811,7 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
                   loading ||
                   (activeStep === 0 && (!formData.title || !isValidGrade(formData.grade)))
                 }
-                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-md hover:from-blue-600 hover:to-purple-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-md hover:from-blue-600 hover:to-purple-600 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Next
                 <ArrowRightIcon className="h-5 w-5 ml-2" />
@@ -714,7 +821,7 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
                 type="button"
                 onClick={handleSubmit}
                 disabled={loading || !formData.title || !isValidGrade(formData.grade)}
-                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-md hover:from-green-600 hover:to-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-md hover:from-green-600 hover:to-blue-600 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <>

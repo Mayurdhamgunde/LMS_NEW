@@ -55,6 +55,7 @@ interface Course {
   status: string
   isPublic: boolean
   iconName?: string
+  coverImg?: string
   progress?: number
   tenantId: string
   createdAt: string
@@ -1402,17 +1403,26 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                   key={course._id}
                   className={`${themeClasses.cardBg} rounded-lg overflow-hidden border ${themeClasses.border} transition-all hover:shadow-lg hover:-translate-y-1`}
                 >
-                  {/* Course Image/Icon Placeholder */}
-                  <div className={`h-48 ${themeClasses.gradientBg} flex items-center justify-center relative`}>
-                    {course.iconName ? (
-                      <div className="text-center">
-                        <div className="text-6xl mb-2">{course.iconName}</div>
-                        <div className={`text-xs ${themeClasses.textMuted}`}>Custom Icon</div>
-                      </div>
+                  {/* Course Image with fallback to gradient + icon */}
+                  <div className={`h-72 overflow-hidden ${!course.coverImg ? themeClasses.gradientBg : ''} flex items-center justify-center relative`}>
+                    {course.coverImg ? (
+                      <img 
+                        src={course.coverImg}
+                        alt={course.title}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = 'none';
+                          if (target.parentElement) {
+                            target.parentElement.classList.add(themeClasses.gradientBg);
+                            target.parentElement.innerHTML = `<svg class=\"h-16 w-16 opacity-50 ${darkMode ? 'text-white' : 'text-blue-600'}\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 14l9-5-9-5-9 5 9 5z\" /><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 14l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z\" /></svg>`;
+                          }
+                        }}
+                      />
                     ) : (
                       <AcademicCapIcon className={`h-16 w-16 opacity-50 ${darkMode ? 'text-white' : 'text-blue-600'}`} />
                     )}
-                    
+
                     {/* Course Type Indicator */}
                     {course.slug && (
                       <div className="absolute top-2 right-2">
@@ -1424,13 +1434,13 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                   </div>
                   
                   {/* Course Content */}
-                  <div className="p-6">
-                    <div className="flex justify-between items-start mb-4">
+                  <div className="p-3">
+                    <div className="flex justify-between items-start mb-3">
                       <div className="flex-1">
                         <h3 className={`text-xl font-bold line-clamp-2 ${themeClasses.text}`}>{course.title}</h3>
                         {/* Course Status Badge */}
                         {course.status && (
-                          <div className="mt-2">
+                          <div className="mt-1">
                             <span className={`px-2 py-1 text-xs rounded-full font-medium ${
                               course.status === 'published' 
                                 ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400'
@@ -1463,11 +1473,11 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                       )}
                     </div>
                     
-                    <p className={`line-clamp-3 mb-4 ${themeClasses.textMuted}`}>{course.description}</p>
+                    <p className={`line-clamp-2 mb-3 ${themeClasses.textMuted}`}>{course.description}</p>
                     
                     {/* Educational Context Information */}
                     <div className="mb-4 space-y-2">
-                      {(course.board || course.grade || course.medium) && (
+                      {(course.board || course.grade || (Array.isArray(course.medium) ? course.medium.filter(Boolean).length > 0 : (typeof course.medium === 'string' && course.medium.trim().length > 0))) && (
                         <div className="flex flex-wrap gap-2">
                           {course.board && (
                             <span className={`px-2 py-1 text-xs rounded-full ${themeClasses.gradientBg} ${themeClasses.textAccent} font-medium`}>
@@ -1479,7 +1489,9 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                               Grade {course.grade}
                             </span>
                           )}
-                          {course.medium && (
+                          {(course.board?.toUpperCase() !== 'CBSE') && (
+                            (Array.isArray(course.medium) ? course.medium.filter(Boolean).length > 0 : (typeof course.medium === 'string' && course.medium.trim().length > 0))
+                          ) && (
                             <span className={`px-2 py-1 text-xs rounded-full ${themeClasses.gradientBg} ${themeClasses.textAccent} font-medium`}>
                               {Array.isArray(course.medium) ? course.medium.join(', ') : course.medium}
                             </span>
@@ -1488,7 +1500,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                       )}
                     </div>
                     
-                    <div className="mb-4">
+                    <div className="mb-3">
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                         <span className={`text-sm ${themeClasses.textMuted} inline-flex items-center gap-1`}>
                           <CalendarIcon className="h-4 w-4" />

@@ -10,7 +10,8 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   EyeIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  PhotoIcon
 } from '@heroicons/react/24/outline'
 interface CourseFormData {
   title: string;
@@ -23,13 +24,16 @@ interface CourseFormData {
 
 const steps = ['Basic Info', 'Settings'];
 
-const AddCourseTest = () => {
+const AddCourseTest = ({ darkMode = false }: { darkMode?: boolean }) => {
   const navigate = useNavigate();
   const { token, user } = useContext(AuthContext);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState(0);
+  const [coverImage, setCoverImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   
   const [formData, setFormData] = useState<CourseFormData>({
     title: '',
@@ -106,6 +110,24 @@ const AddCourseTest = () => {
     });
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert('File size too large. Please choose a file under 5MB.');
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        alert('Please select an image file.');
+        return;
+      }
+      setCoverImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -118,24 +140,26 @@ const AddCourseTest = () => {
     }
     
     try {
-      const courseData = {
-        title: formData.title,
-        status: formData.status,
-        createdBy: user?._id,
-        grade: Number(formData.grade),
-        board: formData.board,
-        medium: formData.medium,
-      };
-      
-      const config = {
+      setUploading(true);
+
+      const data = new FormData();
+      data.append('title', formData.title);
+      data.append('status', formData.status);
+      if (formData.grade) data.append('grade', String(Number(formData.grade)));
+      if (formData.board) data.append('board', formData.board);
+      if (formData.medium && formData.medium.length > 0) {
+        formData.medium.forEach((m) => data.append('medium', m));
+      }
+      if (user?._id) data.append('createdBy', user._id);
+      if (coverImage) data.append('coverImg', coverImage);
+
+      await axios.post('/courses', data, {
         headers: {
-          'Content-Type': 'application/json',
+          // Let the browser set the correct multipart boundary
           'Authorization': `Bearer ${token}`,
           'x-tenant-id': 'default'
         }
-      };
-      
-      await axios.post('/courses', courseData, config);
+      });
       
       setSuccess('Course created successfully!');
       
@@ -161,12 +185,38 @@ const AddCourseTest = () => {
         setError('An error occurred while creating the course. Please try again.');
       }
     } finally {
+      setUploading(false);
       setLoading(false);
     }
   };
 
+  const rootTheme = darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'
+  const headingIcon = darkMode ? 'text-blue-400' : 'text-blue-500'
+  const uploadCard = darkMode
+    ? 'rounded-xl border-2 border-dashed border-white/15 bg-white/5 hover:bg-white/10 focus-within:ring-2 focus-within:ring-blue-500/50'
+    : 'rounded-xl border-2 border-dashed border-gray-200 bg-white hover:bg-gray-50 focus-within:ring-2 focus-within:ring-blue-500/20'
+  const uploadIconWrap = darkMode
+    ? 'bg-blue-500/20 text-blue-400 group-hover:bg-blue-500/30'
+    : 'bg-blue-100 text-blue-600 group-hover:bg-blue-200'
+  const helperText = darkMode ? 'text-gray-400' : 'text-gray-500'
+  const previewBorder = darkMode ? 'border-white/10' : 'border-gray-200'
+  const panelClasses = darkMode
+    ? 'bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden'
+    : 'bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden'
+  const sectionBorder = darkMode ? 'border-white/10' : 'border-gray-200'
+  const labelText = darkMode ? 'text-gray-300' : 'text-gray-700'
+  const inputBase = darkMode
+    ? 'bg-white/5 border border-white/10 text-white placeholder-gray-400'
+    : 'bg-white border border-gray-300 text-gray-900 placeholder-gray-500'
+  const headerSubText = darkMode ? 'text-gray-400' : 'text-gray-600'
+  const stepInactive = darkMode ? 'bg-white/10 text-gray-400' : 'bg-gray-200 text-gray-600'
+  const stepDivider = darkMode ? 'bg-white/10' : 'bg-gray-300'
+  const cancelBtn = darkMode
+    ? 'border border-white/10 text-white hover:bg-white/5'
+    : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+
   return (
-    <div className="min-h-screen bg-gray-900 text-white">
+    <div className={`min-h-screen ${rootTheme}`}>
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center gap-4 mb-8">
           <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
@@ -174,11 +224,11 @@ const AddCourseTest = () => {
           </div>
           <div>
             <h1 className="text-2xl md:text-3xl font-bold">Create New Course</h1>
-            <p className="text-gray-400">Fill in the details below to create your new Curriculum. You can save as draft and come back later.</p>
+            <p className={`${headerSubText}`}>Fill in the details below to create your new Curriculum. You can save as draft and come back later.</p>
           </div>
         </div>
-
-        <div className="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 overflow-hidden">
+        
+        <div className={`${panelClasses}`}>
           {error && (
             <div className="bg-red-500/10 border-b border-red-500/20 text-red-400 p-4 flex items-center gap-2">
               <ExclamationTriangleIcon className="h-5 w-5" />
@@ -193,7 +243,7 @@ const AddCourseTest = () => {
             </div>
           )}
 
-          <div className="p-6 border-b border-white/10">
+          <div className={`p-6 border-b ${sectionBorder}`}>
             <div className="flex items-center justify-center gap-8">
               {steps.map((step, index) => {
                 const isActive = index === activeStep;
@@ -205,7 +255,7 @@ const AddCourseTest = () => {
                         ? 'bg-green-500 text-white' 
                         : isActive 
                         ? 'bg-blue-500 text-white' 
-                        : 'bg-white/10 text-gray-400'
+                        : stepInactive
                     }`}>
                       {isCompleted ? (
                         <CheckCircleIcon className="h-5 w-5" />
@@ -214,13 +264,13 @@ const AddCourseTest = () => {
                       )}
                     </div>
                     <span className={`ml-2 text-sm font-medium ${
-                      isActive ? 'text-white' : 'text-gray-400'
+                      isActive ? (darkMode ? 'text-white' : 'text-gray-900') : (darkMode ? 'text-gray-400' : 'text-gray-600')
                     }`}>
                       {step}
                     </span>
                     {index < steps.length - 1 && (
                       <div className={`w-12 h-px mx-4 ${
-                        isCompleted ? 'bg-green-500' : 'bg-white/10'
+                        isCompleted ? 'bg-green-500' : stepDivider
                       }`} />
                     )}
                   </div>
@@ -235,7 +285,7 @@ const AddCourseTest = () => {
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Subject Name *</label>
+                    <label className={`block text-sm font-medium ${labelText} mb-2`}>Subject Name *</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <AcademicCapIcon className="h-5 w-5 text-gray-400" />
@@ -246,7 +296,7 @@ const AddCourseTest = () => {
                         value={formData.title}
                         onChange={handleChange}
                         disabled={loading}
-                        className="block w-full pl-10 pr-3 py-3 bg-white/5 border border-white/10 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-gray-400"
+                        className={`block w-full pl-10 pr-3 py-3 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputBase}`}
                         placeholder="e.g., Mathematics"
                         required
                       />
@@ -256,14 +306,14 @@ const AddCourseTest = () => {
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Grade Level *</label>
+                    <label className={`block text-sm font-medium ${labelText} mb-2`}>Grade Level *</label>
                     <input
                       type="number"
                       name="grade"
                       value={formData.grade}
                       onChange={handleChange}
                       disabled={loading}
-                      className="block w-full px-3 py-3 bg-white/5 border border-white/10 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-gray-400"
+                      className={`block w-full px-3 py-3 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputBase}`}
                       placeholder="e.g., 10"
                       min="1"
                       max="12"
@@ -276,7 +326,7 @@ const AddCourseTest = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Educational Board</label>
+                  <label className={`block text-sm font-medium ${labelText} mb-2`}>Educational Board</label>
                   <Select
                     name="board"
                     value={boardOptions.find(opt => opt.value === formData.board) || null}
@@ -285,19 +335,25 @@ const AddCourseTest = () => {
                     options={boardOptions}
                     className="react-select-container"
                     classNamePrefix="react-select"
-                    styles={{
+                    styles={darkMode ? {
                       control: (base) => ({ ...base, backgroundColor: 'rgba(255, 255, 255, 0.05)', borderColor: 'rgba(255, 255, 255, 0.1)', color: 'white', minHeight: '14px' }),
                       menu: (base) => ({ ...base, backgroundColor: '#1f2937', color: 'white' }),
                       option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#374151' : '#1f2937', color: 'white' }),
                       singleValue: (base) => ({ ...base, color: 'white' }),
                       input: (base) => ({ ...base, color: 'white' })
+                    } : {
+                      control: (base) => ({ ...base, backgroundColor: '#ffffff', borderColor: '#e5e7eb', color: '#111827', minHeight: '14px' }),
+                      menu: (base) => ({ ...base, backgroundColor: '#ffffff', color: '#111827', border: '1px solid #e5e7eb', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }),
+                      option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#f3f4f6' : '#ffffff', color: '#111827' }),
+                      singleValue: (base) => ({ ...base, color: '#111827' }),
+                      input: (base) => ({ ...base, color: '#111827' })
                     }}
                   />
                 </div>
 
                 {formData.board !== 'CBSE' && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Medium</label>
+                    <label className={`block text-sm font-medium ${labelText} mb-2`}>Medium</label>
                     <Select
                       isMulti
                       name="medium"
@@ -307,7 +363,7 @@ const AddCourseTest = () => {
                       options={mediumOptions}
                       className="react-select-container"
                       classNamePrefix="react-select"
-                      styles={{
+                      styles={darkMode ? {
                         control: (base) => ({ ...base, backgroundColor: 'rgba(255, 255, 255, 0.05)', borderColor: 'rgba(255, 255, 255, 0.1)', color: 'white', minHeight: '14px' }),
                         menu: (base) => ({ ...base, backgroundColor: '#1f2937', color: 'white' }),
                         option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#374151' : '#1f2937', color: 'white' }),
@@ -316,6 +372,15 @@ const AddCourseTest = () => {
                         multiValue: (base) => ({ ...base, backgroundColor: 'rgba(59, 130, 246, 0.2)' }),
                         multiValueLabel: (base) => ({ ...base, color: 'white' }),
                         multiValueRemove: (base) => ({ ...base, color: 'white', ':hover': { backgroundColor: 'rgba(59,130,246,0.3)', color: 'white' } })
+                      } : {
+                        control: (base) => ({ ...base, backgroundColor: '#ffffff', borderColor: '#e5e7eb', color: '#111827', minHeight: '14px' }),
+                        menu: (base) => ({ ...base, backgroundColor: '#ffffff', color: '#111827', border: '1px solid #e5e7eb', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }),
+                        option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#f3f4f6' : '#ffffff', color: '#111827' }),
+                        singleValue: (base) => ({ ...base, color: '#111827' }),
+                        input: (base) => ({ ...base, color: '#111827' }),
+                        multiValue: (base) => ({ ...base, backgroundColor: '#e0f2fe' }),
+                        multiValueLabel: (base) => ({ ...base, color: '#0f172a' }),
+                        multiValueRemove: (base) => ({ ...base, color: '#0f172a', ':hover': { backgroundColor: '#bfdbfe', color: '#0f172a' } })
                       }}
                     />
                   </div>
@@ -327,7 +392,7 @@ const AddCourseTest = () => {
                 
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-4">Course Status</label>
+                  <label className={`block text-sm font-medium ${labelText} mb-4`}>Course Status</label>
                   <div className="grid grid-cols-3 gap-4">
                     {[
                       { value: 'draft', label: 'Draft', desc: 'Work in progress', color: 'yellow' },
@@ -335,42 +400,85 @@ const AddCourseTest = () => {
                     ].map((status) => (
                       <label key={status.value} className="cursor-pointer">
                         <input type="radio" name="status" value={status.value} checked={formData.status === status.value} onChange={handleChange} disabled={loading} className="sr-only peer" />
-                        <div className={`p-4 rounded-lg border-2 transition-all peer-checked:border-blue-500 peer-checked:bg-blue-500/10 ${formData.status === status.value ? 'border-blue-500 bg-blue-500/10' : 'border-white/10 bg-white/5 hover:bg-white/10'}`}>
-                          <div className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${status.color === 'yellow' ? 'bg-yellow-500/20 text-yellow-400' : status.color === 'green' ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'}`}>
+                        <div className={`p-4 rounded-lg border-2 transition-all peer-checked:border-blue-500 ${
+                          formData.status === status.value
+                            ? (darkMode ? 'bg-blue-500/10' : 'bg-blue-50')
+                            : (darkMode ? 'border-white/10 bg-white/5 hover:bg-white/10' : 'border-gray-200 bg-white hover:bg-gray-50')
+                        }`}>
+                          <div className={`w-8 h-8 rounded-full mb-2 flex items-center justify-center ${
+                            status.color === 'yellow'
+                              ? (darkMode ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-600')
+                              : status.color === 'green'
+                                ? (darkMode ? 'bg-green-500/20 text-green-400' : 'bg-green-100 text-green-600')
+                                : (darkMode ? 'bg-gray-500/20 text-gray-400' : 'bg-gray-100 text-gray-600')
+                          }`}>
                             <div className="w-3 h-3 rounded-full bg-current"></div>
                           </div>
-                          <h4 className="font-medium text-white mb-1">{status.label}</h4>
-                          <p className="text-sm text-gray-400">{status.desc}</p>
+                          <h4 className={`font-medium mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{status.label}</h4>
+                          <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>{status.desc}</p>
                         </div>
                       </label>
                     ))}
                   </div>
                 </div>
 
-                <div className="bg-white/5 backdrop-blur-sm rounded-lg border border-white/10 overflow-hidden">
-                  <div className="p-6 border-b border-white/10">
+                <div className={`${panelClasses.replace('rounded-xl','rounded-lg')}`}>
+                  <div className={`p-6 border-b ${sectionBorder}`}>
                     <div className="flex items-center gap-3 mb-4">
-                      <EyeIcon className="h-6 w-6 text-gray-400" />
-                      <h3 className="text-lg font-semibold text-white">Course Preview</h3>
+                      <EyeIcon className={`h-6 w-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} />
+                      <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Course Preview</h3>
                     </div>
                     <div className="p-4">
                       <div className="flex justify-between items-start mb-2">
-                        <h4 className="text-lg font-semibold text-white truncate">{formData.title || 'Subject Name'}</h4>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ml-2 ${formData.status === 'published' ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>{formData.status.charAt(0).toUpperCase() + formData.status.slice(1)}</span>
+                        <h4 className={`text-lg font-semibold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{formData.title || 'Subject Name'}</h4>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ml-2 ${
+                          formData.status === 'published'
+                            ? (darkMode ? 'bg-green-500/20 text-green-400' : 'bg-green-100 text-green-700')
+                            : (darkMode ? 'bg-yellow-500/20 text-yellow-400' : 'bg-yellow-100 text-yellow-700')
+                        }`}>{formData.status.charAt(0).toUpperCase() + formData.status.slice(1)}</span>
                       </div>
-                      <p className="text-gray-400 text-sm mb-3 line-clamp-2">{'Course description will appear here...'}</p>
+                      <div className="mt-4">
+                        <div className="mb-3 flex items-center gap-2">
+                          <PhotoIcon className={`h-5 w-5 ${headingIcon}`} />
+                          <span className="font-semibold text-base md:text-lg tracking-wide">Cover Image</span>
+                        </div>
+                        <label htmlFor="cover-upload" className={`group block cursor-pointer ${uploadCard} transition-all`}>
+                          <div className="flex items-center justify-between p-5 md:p-6">
+                            <div className="flex items-center gap-3">
+                              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${uploadIconWrap}`}>
+                                <EyeIcon className="h-6 w-6" />
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold">Click to upload cover</p>
+                                <p className={`text-xs ${helperText}`}>High‑quality banner works best. JPG, PNG, WebP up to 5MB</p>
+                              </div>
+                            </div>
+                            <span className="inline-flex items-center px-3.5 py-2 rounded-md text-sm font-semibold bg-blue-500 text-white group-hover:bg-blue-600 shadow-sm">Choose File</span>
+                          </div>
+                        </label>
+                        <input id="cover-upload" type="file" accept="image/*" onChange={handleImageUpload} disabled={loading || uploading} className="sr-only" />
+                        {coverImage && (
+                          <p className={`mt-2 text-xs ${helperText}`}>Selected: {coverImage.name}</p>
+                        )}
+                        {imagePreview && (
+                          <div className="mt-4">
+                            <p className="text-sm font-medium mb-2">Preview:</p>
+                            <img src={imagePreview} alt="Cover preview" className={`w-40 h-24 object-cover rounded-lg border ${previewBorder}`} />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="p-6">
-                    <h4 className="text-sm font-medium text-gray-300 mb-3">Setup Progress</h4>
+                    <h4 className={`text-sm font-medium ${labelText} mb-3`}>Setup Progress</h4>
                     <div className="space-y-2">
                       {[
                         { label: 'Subject name', completed: !!formData.title },
                         { label: 'Settings configured', completed: true }
                       ].map((item, index) => (
                         <div key={index} className="flex items-center gap-2 text-sm">
-                          <div className={`w-4 h-4 rounded-full flex items-center justify-center ${item.completed ? 'bg-green-500' : 'bg-white/10'}`}>{item.completed && <CheckCircleIcon className="h-3 w-3 text-white" />}</div>
-                          <span className={item.completed ? 'text-white' : 'text-gray-400'}>{item.label}</span>
+                          <div className={`w-4 h-4 rounded-full flex items-center justify-center ${item.completed ? 'bg-green-500' : (darkMode ? 'bg-white/10' : 'bg-gray-200')}`}>{item.completed && <CheckCircleIcon className="h-3 w-3 text-white" />}</div>
+                          <span className={item.completed ? (darkMode ? 'text-white' : 'text-gray-900') : (darkMode ? 'text-gray-400' : 'text-gray-600')}>{item.label}</span>
                         </div>
                       ))}
                     </div>
@@ -380,12 +488,12 @@ const AddCourseTest = () => {
             )}
           </div>
 
-          <div className="p-6 border-t border-white/10 flex justify-between">
+          <div className={`p-6 border-t ${sectionBorder} flex justify-between`}>
             <button
               type="button"
               onClick={activeStep === 0 ? () => navigate(-1) : handleBack}
               disabled={loading}
-              className="inline-flex items-center px-6 py-3 border border-white/10 text-white rounded-md hover:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`inline-flex items-center px-6 py-3 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${cancelBtn}`}
             >
               <ArrowLeftIcon className="h-5 w-5 mr-2" />
               {activeStep === 0 ? 'Cancel' : 'Back'}
@@ -396,7 +504,7 @@ const AddCourseTest = () => {
                 type="button"
                 onClick={handleNext}
                 disabled={
-                  loading || 
+                  loading || uploading || 
                   (activeStep === 0 && (!formData.title || !isValidGrade(formData.grade)))
                 }
                 className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-md hover:from-blue-600 hover:to-purple-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
@@ -408,13 +516,13 @@ const AddCourseTest = () => {
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={loading || !formData.title || !isValidGrade(formData.grade)}
+                disabled={loading || uploading || !formData.title || !isValidGrade(formData.grade)}
                 className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-md hover:from-green-600 hover:to-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? (
+                {loading || uploading ? (
                   <>
                     <ArrowPathIcon className="h-5 w-5 mr-2 animate-spin" />
-                    Creating Course...
+                    {uploading ? 'Uploading...' : 'Creating Course...'}
                   </>
                 ) : (
                   <>

@@ -155,7 +155,7 @@ function App() {
               <Route path="coursestest" element={<CoursesTest darkMode={darkMode} />} />
               <Route path="profile" element={<Profile darkMode={darkMode} />} />
               <Route path="coursestest/update/:id" element={<UpdateCourse darkMode={darkMode} />} />
-              <Route path="coursestest/add" element={<AddCourseTest/>} />
+              <Route path="coursestest/add" element={<AddCourseTest darkMode={darkMode} />} />
               {/* <Route path="coursestest/update/:id" element={<UpdateCourse/>} /> */}
 
 

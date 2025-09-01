@@ -47,10 +47,17 @@ app.use(cors({
   credentials: true,
   exposedHeaders: ['Content-Disposition']
 }));
-app.use(fileUpload({
-  limits: { fileSize: 5 * 1024 * 1024 },
-  createParentPath: true
-}));
+// IMPORTANT: Avoid conflict with multer (used in /courses) by conditionally applying express-fileupload
+app.use((req, res, next) => {
+  // Skip express-fileupload for course routes where multer handles multipart parsing
+  if (req.path.startsWith('/courses')) {
+    return next();
+  }
+  return fileUpload({
+    limits: { fileSize: 5 * 1024 * 1024 },
+    createParentPath: true
+  })(req, res, next);
+});
 
 // Serve static files from public directory
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
