@@ -203,7 +203,8 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
     }
   };
 
-  const { user } = useContext(AuthContext)
+  const { user, tenantId } = useContext(AuthContext)
+  const isDefaultTenant = (tenantId || 'default') === 'default'
   const [courses, setCourses] = useState<Course[]>([])
   const [filteredCourses, setFilteredCourses] = useState<Course[]>([])
   const [loading, setLoading] = useState(true)
@@ -1255,10 +1256,16 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
 
   // Validation for add module form
   const isAddModuleFormValid = () => {
-    return newModule.title.trim() 
-      && newModule.videoUrl.trim() 
-      && (newModule.board || (selectedCourse as any)?.board || '').toString().trim() 
-      && (newModule.grade || ((selectedCourse as any)?.grade ?? '')).toString().trim()
+    const baseValid = newModule.title.trim() && newModule.videoUrl.trim()
+    if (!baseValid) return false
+    // For default tenant, also require board and grade (from form or prefilled course)
+    if (isDefaultTenant) {
+      const board = (newModule.board || (selectedCourse as any)?.board || '').toString().trim()
+      const grade = (newModule.grade || ((selectedCourse as any)?.grade ?? '')).toString().trim()
+      return !!board && !!grade
+    }
+    // Non-default tenant: only module name and video URL are required
+    return true
   }
 
   // Validation for edit module form
@@ -1696,7 +1703,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                   className={`px-4 py-2 rounded-md flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600 transition-all cursor-pointer`}
                 >
                   <PlusIcon className="h-5 w-5" />
-                  Add Chapter
+                  {isDefaultTenant ? 'Add Chapter' : 'Add Module'}
                 </button>
               )}
               <button
@@ -1716,7 +1723,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
           <div className={`${themeClasses.dialogBg} rounded-lg shadow-xl w-full max-w-2xl overflow-hidden border ${themeClasses.dialogBorder}`}>
             <div className="p-6">
               <h2 className={`text-xl font-semibold mb-6 ${themeClasses.text}`}>
-                Add New Chapter
+                {isDefaultTenant ? 'Add New Chapter' : 'Add New Module'}
               </h2>
               
               <div className="grid grid-cols-2 gap-6">
@@ -1724,17 +1731,18 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                 <div className="space-y-4">
                   <div>
                     <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                      Chapter Name
+                      {isDefaultTenant ? 'Chapter Name' : 'Module Name'}
                     </label>
                     <input
                       type="text"
                       value={newModule.title}
                       onChange={(e) => setNewModule({...newModule, title: e.target.value})}
                       className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                      placeholder="Chapter name"
+                      placeholder={isDefaultTenant ? 'Chapter name' : 'Module name'}
                     />
                   </div>
                   
+                  {isDefaultTenant && (
                   <div>
                     <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
                       Topic Name
@@ -1747,7 +1755,9 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                       placeholder="Topic name"
                     />
                   </div>
+                  )}
                   
+                  {isDefaultTenant && (
                   <div>
                     <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
                       Subtopic Name
@@ -1760,10 +1770,11 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                       placeholder="Subtopic name"
                     />
                   </div>
+                  )}
                   
                   <div>
                     <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                      Subject Name
+                      {isDefaultTenant ? 'Subject Name' : 'Course Title'}
                     </label>
                     <input
                       type="text"
@@ -1777,46 +1788,50 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
 
                 {/* Right Column */}
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                        Board
-                      </label>
-                      <input
-                        type="text"
-                        value={newModule.board}
-                        onChange={(e) => setNewModule({...newModule, board: e.target.value})}
-                        className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                        placeholder={(selectedCourse as any)?.board || 'ssc/cbse/...'}
-                      />
-                    </div>
-                    <div>
-                      <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                        Grade
-                      </label>
-                      <input
-                        type="text"
-                        value={newModule.grade}
-                        onChange={(e) => setNewModule({...newModule, grade: e.target.value})}
-                        className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                        placeholder={(((selectedCourse as any)?.grade ?? '') as any).toString() || '10'}
-                      />
-                    </div>
-                  </div>
+                  {isDefaultTenant && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
+                            Board
+                          </label>
+                          <input
+                            type="text"
+                            value={newModule.board}
+                            onChange={(e) => setNewModule({...newModule, board: e.target.value})}
+                            className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
+                            placeholder={(selectedCourse as any)?.board || 'ssc/cbse/...'}
+                          />
+                        </div>
+                        <div>
+                          <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
+                            Grade
+                          </label>
+                          <input
+                            type="text"
+                            value={newModule.grade}
+                            onChange={(e) => setNewModule({...newModule, grade: e.target.value})}
+                            className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
+                            placeholder={(((selectedCourse as any)?.grade ?? '') as any).toString() || '10'}
+                          />
+                        </div>
+                      </div>
 
-                  {newModule.board !== 'CBSE' && (
-                    <div>
-                      <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                        Medium
-                      </label>
-                      <input
-                        type="text"
-                        value={newModule.medium}
-                        onChange={(e) => setNewModule({...newModule, medium: e.target.value})}
-                        className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                        placeholder={`${(() => { const m = (selectedCourse as any)?.medium; return Array.isArray(m) ? (m.filter(Boolean).join(', ') || '') : (m || 'English'); })()}`}
-                      />
-                    </div>
+                      {newModule.board !== 'CBSE' && (
+                        <div>
+                          <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
+                            Medium
+                          </label>
+                          <input
+                            type="text"
+                            value={newModule.medium}
+                            onChange={(e) => setNewModule({...newModule, medium: e.target.value})}
+                            className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
+                            placeholder={`${(() => { const m = (selectedCourse as any)?.medium; return Array.isArray(m) ? (m.filter(Boolean).join(', ') || '') : (m || 'English'); })()}`}
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
                   
                   <div>
@@ -1872,7 +1887,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                       Adding...
                     </>
                   ) : (
-                    'Add Chapter'
+                    isDefaultTenant ? 'Add Chapter' : 'Add Module'
                   )}
                 </button>
               </div>
@@ -1893,17 +1908,18 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
               <div className="space-y-4">
                 <div>
                   <label className={`block text.sm font-medium mb-1 ${themeClasses.text}`}>
-                    Chapter Name
+                    {isDefaultTenant ? 'Chapter Name' : 'Module Name'}
                   </label>
                   <input
                     type="text"
                     value={editModule.title}
                     onChange={(e) => setEditModule({...editModule, title: e.target.value})}
                     className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                    placeholder="Chapter name"
+                    placeholder={isDefaultTenant ? 'Chapter name' : 'Module name'}
                   />
                 </div>
                 
+                {isDefaultTenant && (
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
                     Topic Name
@@ -1916,7 +1932,9 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                     placeholder="Topic name"
                   />
                 </div>
+                )}
                 
+                {isDefaultTenant && (
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
                     Subtopic Name
@@ -1929,6 +1947,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                     placeholder="Subtopic name"
                   />
                 </div>
+                )}
                 
                 <div>
                   <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>

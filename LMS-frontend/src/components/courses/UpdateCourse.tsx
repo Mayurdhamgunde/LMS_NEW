@@ -23,6 +23,7 @@ interface CourseFormData {
   grade: string;
   board: string;
   medium: string[];
+  description?: string;
 }
 
 const steps = ['Basic Info', 'Settings'];
@@ -71,7 +72,7 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
 
   const { id } = useParams();
   const navigate = useNavigate();
-  const { token } = useContext(AuthContext);
+  const { token, tenantId } = useContext(AuthContext);
   const [loading, setLoading] = useState(false);
   const [loadingCourse, setLoadingCourse] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +87,8 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
     isPublic: false,
     grade: '',
     board: '',
-    medium: []
+    medium: [],
+    description: ''
   });
 
   const isValidGrade = (g: string) => {
@@ -129,7 +131,7 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
         const config = {
           headers: {
             'Authorization': `Bearer ${token}`,
-            'x-tenant-id': 'default'
+            'x-tenant-id': tenantId || 'default'
           }
         };
         
@@ -143,7 +145,8 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
             isPublic: !!course.isPublic,
             grade: (course.grade ?? '').toString(),
             board: course.board || '',
-            medium: Array.isArray(course.medium) ? course.medium : (course.medium ? [course.medium] : [])
+            medium: Array.isArray(course.medium) ? course.medium : (course.medium ? [course.medium] : []),
+            description: course.description || ''
           });
         }
       } catch (err: any) {
@@ -160,13 +163,16 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
   }, [id, token]);
 
   const handleNext = () => {
-    if (activeStep === 0 && (!formData.title || !isValidGrade(formData.grade))) {
-      setError('Please fill in all required fields. Grade must be an integer between 1 and 12.');
-      return;
+    const isDefaultTenant = (tenantId || 'default') === 'default'
+    const missingTitle = !formData.title
+    const invalidGrade = isDefaultTenant && !isValidGrade(formData.grade)
+    if (activeStep === 0 && (missingTitle || invalidGrade)) {
+      setError(isDefaultTenant ? 'Please fill in all required fields. Grade must be an integer between 1 and 12.' : 'Please fill in all required fields.')
+      return
     }
     
-    setError(null);
-    setActiveStep((prevActiveStep) => prevActiveStep + 1);
+    setError(null)
+    setActiveStep((prevActiveStep) => prevActiveStep + 1)
   };
 
   const handleBack = () => {
@@ -212,8 +218,11 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
     setLoading(true);
     setError(null);
     
-    if (!formData.title || !isValidGrade(formData.grade)) {
-      setError('Please fill in all required fields. Grade must be an integer between 1 and 12.');
+    const isDefaultTenant = (tenantId || 'default') === 'default'
+    const missingTitle = !formData.title
+    const invalidGrade = isDefaultTenant && !isValidGrade(formData.grade)
+    if (missingTitle || invalidGrade) {
+      setError(isDefaultTenant ? 'Please fill in all required fields. Grade must be an integer between 1 and 12.' : 'Please fill in all required fields.');
       setLoading(false);
       return;
     }
@@ -222,6 +231,7 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
       const data = new FormData();
       data.append('title', formData.title);
       data.append('status', formData.status);
+      if (formData.description) data.append('description', formData.description);
       if (formData.grade) data.append('grade', String(Number(formData.grade)));
       if (formData.board) data.append('board', formData.board);
       if (formData.medium && formData.medium.length > 0) {
@@ -229,10 +239,10 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
       }
       if (coverImage) data.append('coverImg', coverImage);
 
-      const response = await axios.put(`/courses/${id}`, data, {
+      await axios.put(`/courses/${id}`, data, {
         headers: {
           'Authorization': `Bearer ${token}`,
-          'x-tenant-id': 'default'
+          'x-tenant-id': tenantId || 'default'
         }
       });
       
@@ -273,7 +283,9 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className={`block text-sm font-medium mb-2 ${themeClasses.textSecondary}`}>Subject Name *</label>
+                <label className={`block text-sm font-medium mb-2 ${themeClasses.textSecondary}`}>
+                  {(tenantId || 'default') === 'default' ? 'Subject Name *' : 'Course Title *'}
+                </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <AcademicCapIcon className={`h-5 w-5 ${themeClasses.textMuted}`} />
@@ -285,77 +297,100 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
                     onChange={handleChange}
                     disabled={loading}
                     className={`block w-full pl-10 pr-3 py-3 border ${themeClasses.input} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
-                    placeholder="e.g., Mathematics"
+                    placeholder={(tenantId || 'default') === 'default' ? 'e.g., Mathematics' : 'e.g., Web Development'}
                     required
                   />
                 </div>
                 {!formData.title && error && (
-                  <p className={`mt-1 text-sm ${themeClasses.notification.error}`}>Subject name is required</p>
+                  <p className={`mt-1 text-sm ${themeClasses.notification.error}`}>
+                    {(tenantId || 'default') === 'default' ? 'Subject name is required' : 'Course title is required'}
+                  </p>
                 )}
               </div>
               <div>
-                <label className={`block text-sm font-medium mb-2 ${themeClasses.textSecondary}`}>Grade Level *</label>
-                <input
-                  type="number"
-                  name="grade"
-                  value={formData.grade}
-                  onChange={handleChange}
-                  disabled={loading}
-                  className={`block w-full px-3 py-3 border ${themeClasses.input} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
-                  placeholder="e.g., 10"
-                  min="1"
-                  max="12"
-                  step="1"
-                />
-                {(!isValidGrade(formData.grade)) && error && (
-                  <p className={`mt-1 text-sm ${themeClasses.notification.error}`}>Grade must be an integer between 1 and 12</p>
+                {(tenantId || 'default') === 'default' && (
+                  <>
+                    <label className={`block text-sm font-medium mb-2 ${themeClasses.textSecondary}`}>Grade Level *</label>
+                    <input
+                      type="number"
+                      name="grade"
+                      value={formData.grade}
+                      onChange={handleChange}
+                      disabled={loading}
+                      className={`block w-full px-3 py-3 border ${themeClasses.input} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                      placeholder="e.g., 10"
+                      min="1"
+                      max="12"
+                      step="1"
+                    />
+                    {(!isValidGrade(formData.grade)) && error && (
+                      <p className={`mt-1 text-sm ${themeClasses.notification.error}`}>Grade must be an integer between 1 and 12</p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
 
-            <div>
-              <label className={`block text-sm font-medium mb-2 ${themeClasses.textSecondary}`}>Educational Board</label>
-              <Select
-                name="board"
-                value={boardOptions.find(opt => opt.value === formData.board) || null}
-                onChange={handleBoardChange}
-                isDisabled={loading}
-                options={boardOptions}
-                className="react-select-container"
-                classNamePrefix="react-select"
-                styles={{
-                  control: (base) => ({
-                    ...base,
-                    backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'white',
-                    borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : '#d1d5db',
-                    color: darkMode ? 'white' : '#111827',
-                    minHeight: '14px'
-                  }),
-                  menu: (base) => ({ 
-                    ...base, 
-                    backgroundColor: darkMode ? '#1f2937' : 'white',
-                    color: darkMode ? 'white' : '#111827'
-                  }),
-                  option: (base, { isFocused }) => ({
-                    ...base,
-                    backgroundColor: isFocused 
-                      ? (darkMode ? '#374151' : '#f3f4f6')
-                      : (darkMode ? '#1f2937' : 'white'),
-                    color: darkMode ? 'white' : '#111827'
-                  }),
-                  singleValue: (base) => ({ 
-                    ...base, 
-                    color: darkMode ? 'white' : '#111827' 
-                  }),
-                  input: (base) => ({ 
-                    ...base, 
-                    color: darkMode ? 'white' : '#111827' 
-                  })
-                }}
-              />
-            </div>
+            {(tenantId || 'default') !== 'default' && (
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${themeClasses.textSecondary}`}>Course Description</label>
+                <textarea
+                  name="description"
+                  value={formData.description || ''}
+                  onChange={handleChange}
+                  disabled={loading}
+                  className={`block w-full px-3 py-3 border ${themeClasses.input} rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                  placeholder="Briefly describe this course"
+                  rows={4}
+                />
+              </div>
+            )}
 
-            {formData.board !== 'CBSE' && (
+            {(tenantId || 'default') === 'default' && (
+              <div>
+                <label className={`block text-sm font-medium mb-2 ${themeClasses.textSecondary}`}>Educational Board</label>
+                <Select
+                  name="board"
+                  value={boardOptions.find(opt => opt.value === formData.board) || null}
+                  onChange={handleBoardChange}
+                  isDisabled={loading}
+                  options={boardOptions}
+                  className="react-select-container"
+                  classNamePrefix="react-select"
+                  styles={{
+                    control: (base) => ({
+                      ...base,
+                      backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'white',
+                      borderColor: darkMode ? 'rgba(255, 255, 255, 0.1)' : '#d1d5db',
+                      color: darkMode ? 'white' : '#111827',
+                      minHeight: '14px'
+                    }),
+                    menu: (base) => ({ 
+                      ...base, 
+                      backgroundColor: darkMode ? '#1f2937' : 'white',
+                      color: darkMode ? 'white' : '#111827'
+                    }),
+                    option: (base, { isFocused }) => ({
+                      ...base,
+                      backgroundColor: isFocused 
+                        ? (darkMode ? '#374151' : '#f3f4f6')
+                        : (darkMode ? '#1f2937' : 'white'),
+                      color: darkMode ? 'white' : '#111827'
+                    }),
+                    singleValue: (base) => ({ 
+                      ...base, 
+                      color: darkMode ? 'white' : '#111827' 
+                    }),
+                    input: (base) => ({ 
+                      ...base, 
+                      color: darkMode ? 'white' : '#111827' 
+                    })
+                  }}
+                />
+              </div>
+            )}
+
+            {(tenantId || 'default') === 'default' && formData.board !== 'CBSE' && (
               <div>
                 <label className={`block text-sm font-medium mb-2 ${themeClasses.textSecondary}`}>Medium</label>
                 <Select
@@ -809,7 +844,7 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
                 onClick={handleNext}
                 disabled={
                   loading ||
-                  (activeStep === 0 && (!formData.title || !isValidGrade(formData.grade)))
+                  (activeStep === 0 && (!formData.title || (((tenantId || 'default') === 'default') && !isValidGrade(formData.grade))))
                 }
                 className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-md hover:from-blue-600 hover:to-purple-600 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -820,7 +855,7 @@ const UpdateCourse = ({ darkMode }: { darkMode: boolean }) => {
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={loading || !formData.title || !isValidGrade(formData.grade)}
+                disabled={loading || !formData.title || (((tenantId || 'default') === 'default') && !isValidGrade(formData.grade))}
                 className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-md hover:from-green-600 hover:to-blue-600 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? (

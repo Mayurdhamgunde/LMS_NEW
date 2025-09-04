@@ -20,13 +20,14 @@ interface CourseFormData {
   grade: string;
   board: string;
   medium: string[];
+  description?: string;
 }
 
 const steps = ['Basic Info', 'Settings'];
 
 const AddCourseTest = ({ darkMode = false }: { darkMode?: boolean }) => {
   const navigate = useNavigate();
-  const { token, user } = useContext(AuthContext);
+  const { token, user, tenantId } = useContext(AuthContext);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -41,7 +42,8 @@ const AddCourseTest = ({ darkMode = false }: { darkMode?: boolean }) => {
     isPublic: false,
     grade: '',
     board: '',
-    medium: []
+    medium: [],
+    description: ''
   });
 
   const isValidGrade = (g: string) => {
@@ -62,7 +64,14 @@ const AddCourseTest = ({ darkMode = false }: { darkMode?: boolean }) => {
   ];
 
   const handleNext = () => {
-    if (activeStep === 0 && (!formData.title || !isValidGrade(formData.grade))) {
+    const isDefaultTenant = (tenantId || 'default') === 'default'
+    if (
+      activeStep === 0 && 
+      (
+        !formData.title || 
+        (isDefaultTenant && !isValidGrade(formData.grade))
+      )
+    ) {
       setError('Please fill in all required fields. Grade must be an integer between 1 and 12.');
       return;
     }
@@ -145,6 +154,7 @@ const AddCourseTest = ({ darkMode = false }: { darkMode?: boolean }) => {
       const data = new FormData();
       data.append('title', formData.title);
       data.append('status', formData.status);
+      if (formData.description) data.append('description', formData.description);
       if (formData.grade) data.append('grade', String(Number(formData.grade)));
       if (formData.board) data.append('board', formData.board);
       if (formData.medium && formData.medium.length > 0) {
@@ -157,7 +167,7 @@ const AddCourseTest = ({ darkMode = false }: { darkMode?: boolean }) => {
         headers: {
           // Let the browser set the correct multipart boundary
           'Authorization': `Bearer ${token}`,
-          'x-tenant-id': 'default'
+          'x-tenant-id': tenantId || 'default'
         }
       });
       
@@ -214,6 +224,12 @@ const AddCourseTest = ({ darkMode = false }: { darkMode?: boolean }) => {
   const cancelBtn = darkMode
     ? 'border border-white/10 text-white hover:bg-white/5'
     : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+
+  // Tenant-aware labels
+  const isDefaultTenant = (tenantId || 'default') === 'default'
+  const subjectLabel = isDefaultTenant ? 'Subject Name *' : 'Course Title *'
+  const subjectPlaceholder = isDefaultTenant ? 'e.g., Mathematics' : 'e.g., Web Development'
+  const subjectErrorText = isDefaultTenant ? 'Subject name is required' : 'Course title is required'
 
   return (
     <div className={`min-h-screen ${rootTheme}`}>
@@ -285,7 +301,7 @@ const AddCourseTest = ({ darkMode = false }: { darkMode?: boolean }) => {
               <div className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className={`block text-sm font-medium ${labelText} mb-2`}>Subject Name *</label>
+                    <label className={`block text-sm font-medium ${labelText} mb-2`}>{subjectLabel}</label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <AcademicCapIcon className="h-5 w-5 text-gray-400" />
@@ -297,61 +313,80 @@ const AddCourseTest = ({ darkMode = false }: { darkMode?: boolean }) => {
                         onChange={handleChange}
                         disabled={loading}
                         className={`block w-full pl-10 pr-3 py-3 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputBase}`}
-                        placeholder="e.g., Mathematics"
+                        placeholder={subjectPlaceholder}
                         required
                       />
                     </div>
                     {!formData.title && error && (
-                      <p className="mt-1 text-sm text-red-400">Subject name is required</p>
+                      <p className="mt-1 text-sm text-red-400">{subjectErrorText}</p>
                     )}
                   </div>
-                  <div>
-                    <label className={`block text-sm font-medium ${labelText} mb-2`}>Grade Level *</label>
-                    <input
-                      type="number"
-                      name="grade"
-                      value={formData.grade}
+                  {isDefaultTenant && (
+                    <div>
+                      <label className={`block text-sm font-medium ${labelText} mb-2`}>Grade Level *</label>
+                      <input
+                        type="number"
+                        name="grade"
+                        value={formData.grade}
+                        onChange={handleChange}
+                        disabled={loading}
+                        className={`block w-full px-3 py-3 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputBase}`}
+                        placeholder="e.g., 10"
+                        min="1"
+                        max="12"
+                        step="1"
+                      />
+                      {(!isValidGrade(formData.grade)) && error && (
+                        <p className="mt-1 text-sm text-red-400">Grade must be an integer between 1 and 12</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {!isDefaultTenant && (
+                  <div className="md:col-span-2">
+                    <label className={`block text-sm font-medium ${labelText} mb-2`}>Course Description</label>
+                    <textarea
+                      name="description"
+                      value={formData.description || ''}
                       onChange={handleChange}
                       disabled={loading}
                       className={`block w-full px-3 py-3 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${inputBase}`}
-                      placeholder="e.g., 10"
-                      min="1"
-                      max="12"
-                      step="1"
+                      placeholder="Briefly describe this course"
+                      rows={4}
                     />
-                    {(!isValidGrade(formData.grade)) && error && (
-                      <p className="mt-1 text-sm text-red-400">Grade must be an integer between 1 and 12</p>
-                    )}
                   </div>
-                </div>
+                )}
 
-                <div>
-                  <label className={`block text-sm font-medium ${labelText} mb-2`}>Educational Board</label>
-                  <Select
-                    name="board"
-                    value={boardOptions.find(opt => opt.value === formData.board) || null}
-                    onChange={handleBoardChange}
-                    isDisabled={loading}
-                    options={boardOptions}
-                    className="react-select-container"
-                    classNamePrefix="react-select"
-                    styles={darkMode ? {
-                      control: (base) => ({ ...base, backgroundColor: 'rgba(255, 255, 255, 0.05)', borderColor: 'rgba(255, 255, 255, 0.1)', color: 'white', minHeight: '14px' }),
-                      menu: (base) => ({ ...base, backgroundColor: '#1f2937', color: 'white' }),
-                      option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#374151' : '#1f2937', color: 'white' }),
-                      singleValue: (base) => ({ ...base, color: 'white' }),
-                      input: (base) => ({ ...base, color: 'white' })
-                    } : {
-                      control: (base) => ({ ...base, backgroundColor: '#ffffff', borderColor: '#e5e7eb', color: '#111827', minHeight: '14px' }),
-                      menu: (base) => ({ ...base, backgroundColor: '#ffffff', color: '#111827', border: '1px solid #e5e7eb', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }),
-                      option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#f3f4f6' : '#ffffff', color: '#111827' }),
-                      singleValue: (base) => ({ ...base, color: '#111827' }),
-                      input: (base) => ({ ...base, color: '#111827' })
-                    }}
-                  />
-                </div>
+                {isDefaultTenant && (
+                  <div>
+                    <label className={`block text-sm font-medium ${labelText} mb-2`}>Educational Board</label>
+                    <Select
+                      name="board"
+                      value={boardOptions.find(opt => opt.value === formData.board) || null}
+                      onChange={handleBoardChange}
+                      isDisabled={loading}
+                      options={boardOptions}
+                      className="react-select-container"
+                      classNamePrefix="react-select"
+                      styles={darkMode ? {
+                        control: (base) => ({ ...base, backgroundColor: 'rgba(255, 255, 255, 0.05)', borderColor: 'rgba(255, 255, 255, 0.1)', color: 'white', minHeight: '14px' }),
+                        menu: (base) => ({ ...base, backgroundColor: '#1f2937', color: 'white' }),
+                        option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#374151' : '#1f2937', color: 'white' }),
+                        singleValue: (base) => ({ ...base, color: 'white' }),
+                        input: (base) => ({ ...base, color: 'white' })
+                      } : {
+                        control: (base) => ({ ...base, backgroundColor: '#ffffff', borderColor: '#e5e7eb', color: '#111827', minHeight: '14px' }),
+                        menu: (base) => ({ ...base, backgroundColor: '#ffffff', color: '#111827', border: '1px solid #e5e7eb', boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }),
+                        option: (base, { isFocused }) => ({ ...base, backgroundColor: isFocused ? '#f3f4f6' : '#ffffff', color: '#111827' }),
+                        singleValue: (base) => ({ ...base, color: '#111827' }),
+                        input: (base) => ({ ...base, color: '#111827' })
+                      }}
+                    />
+                  </div>
+                )}
 
-                {formData.board !== 'CBSE' && (
+                {isDefaultTenant && formData.board !== 'CBSE' && (
                   <div>
                     <label className={`block text-sm font-medium ${labelText} mb-2`}>Medium</label>
                     <Select
@@ -430,7 +465,7 @@ const AddCourseTest = ({ darkMode = false }: { darkMode?: boolean }) => {
                     </div>
                     <div className="p-4">
                       <div className="flex justify-between items-start mb-2">
-                        <h4 className={`text-lg font-semibold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{formData.title || 'Subject Name'}</h4>
+                        <h4 className={`text-lg font-semibold truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>{formData.title || (isDefaultTenant ? 'Subject Name' : 'Course Title')}</h4>
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ml-2 ${
                           formData.status === 'published'
                             ? (darkMode ? 'bg-green-500/20 text-green-400' : 'bg-green-100 text-green-700')
@@ -473,7 +508,7 @@ const AddCourseTest = ({ darkMode = false }: { darkMode?: boolean }) => {
                     <h4 className={`text-sm font-medium ${labelText} mb-3`}>Setup Progress</h4>
                     <div className="space-y-2">
                       {[
-                        { label: 'Subject name', completed: !!formData.title },
+                        { label: isDefaultTenant ? 'Subject name' : 'Course title', completed: !!formData.title },
                         { label: 'Settings configured', completed: true }
                       ].map((item, index) => (
                         <div key={index} className="flex items-center gap-2 text-sm">
@@ -505,7 +540,7 @@ const AddCourseTest = ({ darkMode = false }: { darkMode?: boolean }) => {
                 onClick={handleNext}
                 disabled={
                   loading || uploading || 
-                  (activeStep === 0 && (!formData.title || !isValidGrade(formData.grade)))
+                  (activeStep === 0 && (!formData.title || (isDefaultTenant && !isValidGrade(formData.grade))))
                 }
                 className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-md hover:from-blue-600 hover:to-purple-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -516,7 +551,7 @@ const AddCourseTest = ({ darkMode = false }: { darkMode?: boolean }) => {
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={loading || uploading || !formData.title || !isValidGrade(formData.grade)}
+                disabled={loading || uploading || !formData.title || (isDefaultTenant && !isValidGrade(formData.grade))}
                 className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-500 to-blue-500 text-white rounded-md hover:from-green-600 hover:to-blue-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading || uploading ? (
