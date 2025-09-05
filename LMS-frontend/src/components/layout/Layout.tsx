@@ -14,6 +14,7 @@ import {
   XMarkIcon
 } from '@heroicons/react/24/outline'
 import AuthContext from '../../context/AuthContext'
+import { API_CONFIG } from '../../config/api'
 
 interface User {
   _id: string
@@ -78,8 +79,12 @@ const Layout = ({ toggleDarkMode, darkMode }: LayoutProps) => {
   const getFullImageUrl = (imagePath: string | undefined) => {
     if (!imagePath) return undefined
     if (imagePath.startsWith('data:')) return imagePath
-    if (imagePath.startsWith('/')) return `${window.location.origin}${imagePath}`
-    return imagePath
+    // If path already absolute (http/https), return as-is
+    if (/^https?:\/\//i.test(imagePath)) return imagePath
+    // Our backend serves files from /uploads at API base URL
+    if (imagePath.startsWith('/')) return `${API_CONFIG.BASE_URL}${imagePath}`
+    // Fallback: treat as relative to API base URL
+    return `${API_CONFIG.BASE_URL}/${imagePath.replace(/^\//, '')}`
   }
 
   // Check user roles with normalization

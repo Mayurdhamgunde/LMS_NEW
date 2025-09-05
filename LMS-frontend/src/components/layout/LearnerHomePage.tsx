@@ -14,6 +14,7 @@ import {
   Bars3Icon
 } from '@heroicons/react/24/outline'
 import AuthContext from '../../context/AuthContext'
+import { API_CONFIG } from '../../config/api'
 
 interface User {
   _id: string
@@ -73,8 +74,9 @@ const LearnerHomePage = ({ toggleDarkMode, darkMode }: LearnerHomePageProps) => 
   const getFullImageUrl = (imagePath: string | undefined) => {
     if (!imagePath) return undefined
     if (imagePath.startsWith('data:')) return imagePath
-    if (imagePath.startsWith('/')) return `${window.location.origin}${imagePath}`
-    return imagePath
+    if (/^https?:\/\//i.test(imagePath)) return imagePath
+    if (imagePath.startsWith('/')) return `${API_CONFIG.BASE_URL}${imagePath}`
+    return `${API_CONFIG.BASE_URL}/${imagePath.replace(/^\//, '')}`
   }
 
   const getRoleBadgeColor = (role: string | undefined) => {

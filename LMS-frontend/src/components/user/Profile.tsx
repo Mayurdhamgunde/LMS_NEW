@@ -10,6 +10,7 @@ import {
 } from '@heroicons/react/24/outline'
 import axios from 'axios'
 import AuthContext from '../../context/AuthContext'
+import { API_CONFIG } from '../../config/api'
 import { 
   PageLoading, 
   ProfileSkeleton, 
@@ -313,22 +314,14 @@ const Profile = ({ darkMode }: { darkMode: boolean }) => {
     }
   }
 
-  // Add a function to get the full image URL
+  // Build a full image URL compatible with backend static hosting
   const getFullImageUrl = (imagePath: string | undefined) => {
-    if (!imagePath) return undefined;
-    
-    // If it's already a data URL (from preview), return as is
-    if (imagePath.startsWith('data:')) {
-      return imagePath;
-    }
-    
-    // If it's a relative path, use it as is (the proxy will handle it)
-    if (imagePath.startsWith('/')) {
-      return imagePath;
-    }
-    
-    return imagePath;
-  };
+    if (!imagePath) return undefined
+    if (imagePath.startsWith('data:')) return imagePath
+    if (/^https?:\/\//i.test(imagePath)) return imagePath
+    if (imagePath.startsWith('/')) return `${API_CONFIG.BASE_URL}${imagePath}`
+    return `${API_CONFIG.BASE_URL}/${imagePath.replace(/^\//, '')}`
+  }
 
   if (loading) {
     return (
