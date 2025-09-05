@@ -1284,9 +1284,9 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
               <AcademicCapIcon className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className={`text-2xl md:text-3xl font-bold ${themeClasses.text}`}>Courses</h1>
+              <h1 className={`text-2xl md:text-3xl font-bold ${themeClasses.text}`}>{isDefaultTenant ? 'Subjects' : 'Courses'}</h1>
               <p className={themeClasses.textMuted}>
-                {totalRecords} courses available
+                {totalRecords} {isDefaultTenant ? 'Subjects' : 'courses'} available
                 {loadingModuleCounts && (
                   <span className="ml-2 inline-flex items-center gap-1 text-xs">
                     <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
@@ -1309,7 +1309,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
               hover:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2`}
           >
             <ArrowPathIcon className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Loading...' : 'Refresh All Courses'}
+            {loading ? 'Loading...' : (isDefaultTenant ? 'Refresh All Subjects' : 'Refresh All Courses')}
           </button>
         </div>
 
@@ -1548,7 +1548,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                         <span className={`${themeClasses.textMuted} flex items-center gap-1`}>
                           <AcademicCapIcon className="h-4 w-4" />
                           <span>
-                            Chapters: {
+                            {isDefaultTenant ? 'Chapters' : 'Modules'}: {
                               loadingModuleCounts && course.moduleCount === undefined 
                                 ? (
                                   <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
@@ -1571,7 +1571,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
                             hover:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2`}
                         >
                           <PlusIcon className="h-5 w-5" />
-                          Add Chapters
+                          {isDefaultTenant ? 'Add Chapters' : 'Add Modules'}
                         </button>
                       )}
                     </div>
@@ -1613,7 +1613,7 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
             <div className={`p-6 border-b flex-shrink-0 ${themeClasses.dialogBorder}`}>
               <div className="flex justify-between items-center">
                 <h2 className={`text-xl font-semibold ${themeClasses.text}`}>
-                  {selectedCourse?.title} - Modules
+                  {selectedCourse?.title} - {isDefaultTenant ? 'Chapters' : 'Modules'}
                 </h2>
                 <button 
                   onClick={() => setOpenModulesDialog(false)}

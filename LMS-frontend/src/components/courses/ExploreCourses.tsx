@@ -1,49 +1,115 @@
-import React, { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
   Play, 
   CheckCircle, 
   FileText, 
   Video, 
-  Users, 
   ChevronRight, 
   ChevronDown, 
   PlayCircle, 
   BookOpen, 
   Download, 
-  Star, 
-  Award, 
-  ArrowUp,
-  Lock,
   Menu,
-  Search
+  Search,
+  Plus,
+  HelpCircle // Replaced Quiz with HelpCircle
 } from 'lucide-react';
-import { ArrowPathIcon, XMarkIcon, AcademicCapIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon } from '@heroicons/react/24/outline';
 import axios from 'axios';
 import AuthContext from '../../context/AuthContext';
 
+// Enhanced interfaces
+type CorrectAnswerKey = 'a' | 'b' | 'c' | 'd';
+
+interface QuizQuestion {
+  que: string;
+  opt: {
+    a: string;
+    b: string;
+    c: string;
+    d: string;
+  };
+  correctAnswer: CorrectAnswerKey;
+  explanation: string;
+}
+
+interface VideoQuiz {
+  _id?: string;
+  videoTitle: string;
+  videoUrl: string;
+  ytId?: string;
+  // For non-default tenants
+  moduleName?: string;
+  topicName?: string;
+  subtopicName?: string;
+  courseName?: string;
+  // For default tenants
+  chapterName?: string;
+  subName?: string;
+  subjectId?: string;
+  board: string;
+  grade: string;
+  medium: string[];
+  quiz?: QuizQuestion[];
+  questions?: QuizQuestion[];
+  tenantId: string;
+}
+
+interface VideoItem {
+  _id: string;
+  videoUrl: string;
+  videoTitle?: string;
+  quiz?: VideoQuiz;
+}
+
+interface Subtopic {
+  _id: string;
+  subtopicname: string;
+  videos: VideoItem[];
+}
+
+interface Topic {
+  _id: string;
+  topicname: string;
+  subtopics: Subtopic[];
+  videos: VideoItem[];
+}
+
 interface Module {
   _id: string;
-  title: string;
+  title?: string; // For non-default tenants
+  chaptername?: string; // For default tenants
   description: string;
   duration: string;
   courseId: {
     _id: string;
-    title: string;
+    title?: string;
+    subject?: string; // For default tenants
     description: string;
+    calculatedProgress?: number;
   };
+  coursename?: string; // For non-default tenants
+  subjectname?: string; // For default tenants
   isCompleted: boolean;
   videoUrl?: string;
   difficulty: string;
   rating: number;
   enrolledUsers: number;
+  tenantId: string;
+  board?: string;
+  grade?: string;
+  medium?: string[];
   createdAt: string;
   updatedAt: string;
+  videos: VideoItem[];
+  topics: Topic[];
 }
 
 interface Course {
   _id: string;
-  title: string;
+  title?: string;
+  subject?: string; // For default tenants
   description: string;
   slug: string;
   price: number;
@@ -52,6 +118,9 @@ interface Course {
   iconName?: string;
   progress?: number;
   tenantId: string;
+  board?: string;
+  grade?: string;
+  medium?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -61,81 +130,79 @@ interface ApiResponse<T> {
   data: T;
 }
 
+interface SelectedVideo extends VideoItem {
+  moduleName: string;
+  topicName?: string;
+  subtopicName?: string;
+  courseName: string;
+}
+
 const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
   const { courseId } = useParams();
-  const { user } = useContext(AuthContext);
-  const [selectedModule, setSelectedModule] = useState<Module | null>(null);
+  const { user, tenantId } = useContext(AuthContext);
+  const isDefaultTenant = (tenantId || 'default') === 'default'
+  
+  // State management
+  const [selectedVideo, setSelectedVideo] = useState<SelectedVideo | null>(null);
   const [course, setCourse] = useState<Course | null>(null);
   const [modules, setModules] = useState<Module[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [userProgress, setUserProgress] = useState<Record<string, boolean>>({});
+  const [userProgress] = useState<Record<string, boolean>>({});
   const [showSidebar, setShowSidebar] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [expandedModules, setExpandedModules] = useState<Record<string, boolean>>({});
+  const [expandedTopics, setExpandedTopics] = useState<Record<string, boolean>>({});
+  const [expandedSubtopics, setExpandedSubtopics] = useState<Record<string, boolean>>({});
+  const [videoQuizzes, setVideoQuizzes] = useState<Record<string, VideoQuiz>>({});
+  const [showQuizModal, setShowQuizModal] = useState(false);
+  const [selectedQuiz, setSelectedQuiz] = useState<VideoQuiz | null>(null);
 
-  // Updated theme classes matching Profile component
+  // Theme classes
   const themeClasses = {
-    container: darkMode ? 'bg-gray-900' : 'bg-gray-50',
+    container: darkMode ? 'bg-gray-950' : 'bg-gray-50',
     title: darkMode ? 'text-white' : 'text-gray-900',
-    card: darkMode ? 'bg-white/5 backdrop-blur-sm' : 'bg-white shadow-sm border border-gray-200',
+    card: darkMode ? 'bg-white/10 backdrop-blur-md border border-white/10 shadow-[0_0_0_1px_rgba(255,255,255,0.04)]' : 'bg-white shadow-sm border border-gray-200',
     text: darkMode ? 'text-white' : 'text-gray-900',
-    textMuted: darkMode ? 'text-gray-400' : 'text-gray-600',
+    textMuted: darkMode ? 'text-gray-300' : 'text-gray-600',
     textSecondary: darkMode ? 'text-gray-300' : 'text-gray-700',
     input: darkMode 
-      ? 'bg-white/5 border-white/10 text-white placeholder-gray-400 focus:ring-blue-500' 
+      ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500' 
       : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500',
     button: darkMode
-      ? 'border-white/10 text-white hover:bg-white/5'
+      ? 'border-white/10 text-white hover:bg-white/10'
       : 'border-gray-300 text-gray-700 hover:bg-gray-50',
     buttonPrimary: 'bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600',
-    dialog: darkMode ? 'bg-[#1e2736]' : 'bg-white',
-    overlay: darkMode ? 'bg-black/50' : 'bg-gray-900/50',
+    dialog: darkMode ? 'bg-[#0f172a]' : 'bg-white',
+    overlay: darkMode ? 'bg-black/60' : 'bg-gray-900/50',
     divider: darkMode ? 'border-white/10' : 'border-gray-200',
     error: darkMode 
-      ? 'bg-red-500/10 border-red-500/20 text-red-500' 
+      ? 'bg-red-500/10 border-red-500/20 text-red-400' 
       : 'bg-red-50 border-red-200 text-red-700',
     success: darkMode 
-      ? 'bg-green-500/10 border-green-500/20 text-green-500' 
+      ? 'bg-green-500/10 border-green-500/20 text-green-400' 
       : 'bg-green-50 border-green-200 text-green-700',
-    progress: darkMode ? 'bg-white/5' : 'bg-gray-200',
+    progress: darkMode ? 'bg-white/10' : 'bg-gray-200',
     badge: darkMode 
-      ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-blue-500/20' 
+      ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-blue-500/30' 
       : 'bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-blue-500/10',
     iconBg: darkMode ? 'bg-blue-500/10' : 'bg-blue-50',
-    iconColor: darkMode ? 'text-blue-500' : 'text-blue-600',
+    iconColor: darkMode ? 'text-blue-400' : 'text-blue-600',
     gradientBg: 'bg-gradient-to-r from-blue-500 to-purple-500',
-    hoverBg: darkMode ? 'hover:bg-white/5' : 'hover:bg-gray-50',
-    sidebarBg: darkMode ? 'bg-white/5 backdrop-blur-sm border-white/10' : 'bg-white shadow-xl border-gray-200',
-    topBarBg: darkMode ? 'bg-white/5 backdrop-blur-sm border-white/10' : 'bg-white shadow-sm border-gray-200'
+    hoverBg: darkMode ? 'hover:bg-white/10' : 'hover:bg-gray-50',
+    sidebarBg: darkMode ? 'bg-white/5 backdrop-blur-md border-white/10' : 'bg-white shadow-xl border-gray-200',
+    topBarBg: darkMode ? 'bg-white/5 backdrop-blur-md border-white/10' : 'bg-white shadow-sm border-gray-200'
   };
 
-  // Icon mapping function
-  const getIconComponent = (iconName: string): React.ReactNode => {
-    switch (iconName) {
-      case 'Users': return <Users className="w-5 h-5 text-blue-600" />;
-      case 'Video': return <Video className="w-5 h-5 text-purple-600" />;
-      case 'FileText': return <FileText className="w-5 h-5 text-orange-600" />;
-      default: return <BookOpen className="w-5 h-5 text-gray-600" />;
-    }
+  // Utility functions
+  const getDisplayName = (module: Module): string => {
+    return user?.tenantId === 'default' ? (module.chaptername || '') : (module.title || '');
   };
 
-  // Responsive sidebar handling
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 1024) {
-        setShowSidebar(false);
-      } else {
-        setShowSidebar(true);
-      }
-    };
+  const getCourseName = (module: Module): string => {
+    return user?.tenantId === 'default' ? (module.subjectname || '') : (module.coursename || '');
+  };
 
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Extract YouTube ID function
   const extractYoutubeId = (url: string): string | null => {
     if (!url) return null;
     const patterns = [
@@ -154,33 +221,216 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
     return null;
   };
 
-  // Check if module is unlocked
-  const isModuleUnlocked = (moduleIndex: number): boolean => {
-    if (!user) return true; // If not logged in, all modules are unlocked
-    if (moduleIndex === 0) return true; // First module is always unlocked
+  // Helper function to find first video in hierarchy
+  const findFirstVideoInHierarchy = (
+    module?: Module, 
+    topic?: Topic, 
+    subtopic?: Subtopic
+  ): VideoItem | null => {
+    if (module && module.videoUrl) {
+      return {
+        _id: module._id,
+        videoUrl: module.videoUrl,
+        videoTitle: getDisplayName(module),
+      };
+    }
+
+    if (subtopic && subtopic.videos && subtopic.videos.length > 0) {
+      return subtopic.videos[0];
+    }
     
-    // Check if previous module is completed
-    const previousModule = modules[moduleIndex - 1];
-    if (!previousModule) return false;
+    if (topic) {
+      if (topic.videos && topic.videos.length > 0) {
+        return topic.videos[0];
+      }
+      
+      if (topic.subtopics) {
+        for (const sub of topic.subtopics) {
+          if (sub.videos && sub.videos.length > 0) {
+            return sub.videos[0];
+          }
+        }
+      }
+    }
     
-    return previousModule.isCompleted || userProgress[previousModule._id];
+    if (module) {
+      if (module.videos && module.videos.length > 0) {
+        return module.videos[0];
+      }
+      
+      if (module.topics) {
+        for (const top of module.topics) {
+          const video = findFirstVideoInHierarchy(undefined, top);
+          if (video) return video;
+        }
+      }
+    }
+    
+    return null;
   };
 
-  // Fetch course data
+  // Create video object with fallback title
+  const createVideoWithTitle = (
+    video: VideoItem, 
+    fallbackTitle: string
+  ): VideoItem => ({
+    ...video,
+    videoTitle: video.videoTitle || fallbackTitle
+  });
+
+  // Helper functions to check if expansion is needed
+  const moduleHasExpandableContent = (module: Module): boolean => {
+    return module.topics && module.topics.length > 0;
+  };
+
+  const topicHasExpandableContent = (topic: Topic): boolean => {
+    return topic.subtopics && topic.subtopics.length > 0;
+  };
+
+  const subtopicHasExpandableContent = (subtopic: Subtopic): boolean => {
+    return subtopic.videos && subtopic.videos.length > 0;
+  };
+
+  // API functions for video quizzes
+  const fetchVideoQuizByModuleAndCourse = async (moduleName: string, courseName: string) => {
+    try {
+      const response = await axios.get(`/vq/module/${encodeURIComponent(moduleName)}/course/${encodeURIComponent(courseName)}`);
+      return response;
+    } catch (error: any) {
+      if (error.response?.status === 404) {
+        try {
+          const fallbackResponse = await axios.get(`/vq/module/${encodeURIComponent(moduleName)}`, {
+            params: { courseName }
+          });
+          return fallbackResponse;
+        } catch (fallbackError: any) {
+          throw fallbackError;
+        }
+      }
+      throw error;
+    }
+  };
+
+  const fetchVideoQuizByTitle = async (videoTitle: string, courseName: string) => {
+    try {
+      const response = await axios.get(`/vq/title/${encodeURIComponent(videoTitle)}`, {
+        params: { courseName }
+      });
+      return response;
+    } catch (error: any) {
+      throw error;
+    }
+  };
+
+  const checkVideoQuizExists = async (moduleName: string, courseName: string, videoTitle?: string) => {
+    try {
+      if (videoTitle) {
+        const response = await fetchVideoQuizByTitle(videoTitle, courseName);
+        return response.data.success && response.data.data ? response.data.data : false;
+      } else {
+        const response = await fetchVideoQuizByModuleAndCourse(moduleName, courseName);
+        return response.data.success && response.data.data ? response.data.data : false;
+      }
+    } catch (error) {
+      return false;
+    }
+  };
+
+  // Enhanced event handlers
+  const handleModuleClick = (module: Module) => {
+    const hasExpandableContent = moduleHasExpandableContent(module);
+    
+    if (hasExpandableContent) {
+      // If module has topics, toggle expansion instead of playing video
+      setExpandedModules(prev => ({
+        ...prev,
+        [module._id]: !prev[module._id]
+      }));
+    } else {
+      // If module has no topics, play video directly
+      const video = findFirstVideoInHierarchy(module);
+      if (video) {
+        const displayName = getDisplayName(module);
+        const courseName = getCourseName(module);
+        const videoWithTitle = createVideoWithTitle(video, displayName);
+        
+        setSelectedVideo({
+          ...videoWithTitle,
+          moduleName: displayName,
+          courseName
+        });
+        
+        if (window.innerWidth < 1024) {
+          setShowSidebar(false);
+        }
+      }
+    }
+  };
+
+  const handleTopicClick = (topic: Topic, moduleName: string) => {
+    const hasExpandableContent = topicHasExpandableContent(topic);
+    
+    if (hasExpandableContent) {
+      // If topic has subtopics, toggle expansion instead of playing video
+      setExpandedTopics(prev => ({
+        ...prev,
+        [topic._id]: !prev[topic._id]
+      }));
+    } else {
+      // If topic has no subtopics, play video directly
+      const video = findFirstVideoInHierarchy(undefined, topic);
+      if (video) {
+        const courseName = course?.title || course?.subject || '';
+        const videoWithTitle = createVideoWithTitle(video, topic.topicname);
+        
+        setSelectedVideo({
+          ...videoWithTitle,
+          moduleName,
+          topicName: topic.topicname,
+          courseName
+        });
+        
+        if (window.innerWidth < 1024) {
+          setShowSidebar(false);
+        }
+      }
+    }
+  };
+
+  const handleSubtopicClick = (subtopic: Subtopic, moduleName: string, topicName: string) => {
+    // Subtopic is the final level, so always play video
+    const video = findFirstVideoInHierarchy(undefined, undefined, subtopic);
+    if (video) {
+      const courseName = course?.title || course?.subject || '';
+      const videoWithTitle = createVideoWithTitle(video, subtopic.subtopicname);
+      
+      setSelectedVideo({
+        ...videoWithTitle,
+        moduleName,
+        topicName,
+        subtopicName: subtopic.subtopicname,
+        courseName
+      });
+      
+      if (window.innerWidth < 1024) {
+        setShowSidebar(false);
+      }
+    }
+  };
+
+  // Fetch course and modules data
   const fetchCourseData = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      // Fetch course details
-              const courseResponse = await axios.get<ApiResponse<Course>>(`/courses/${courseId}`);
+      const courseResponse = await axios.get<ApiResponse<Course>>(`/courses/${courseId}`);
       
       if (!courseResponse.data.success) {
         throw new Error('Failed to fetch course details');
       }
       
-      // Fetch modules
-              const modulesResponse = await axios.get<ApiResponse<Module[]>>(`/courses/${courseId}/modules`);
+      const modulesResponse = await axios.get<ApiResponse<Module[]>>(`/courses/${courseId}/modules`);
       
       if (!modulesResponse.data.success) {
         throw new Error('Failed to fetch modules');
@@ -189,9 +439,43 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
       setCourse(courseResponse.data.data);
       setModules(modulesResponse.data.data);
       
-      // Auto-select first module if available
+      // Fetch video quizzes for all videos
+      await fetchAllVideoQuizzes(modulesResponse.data.data);
+      
+      // Auto-expand first module, topic, and subtopic if they have content
       if (modulesResponse.data.data.length > 0) {
-        setSelectedModule(modulesResponse.data.data[0]);
+        const firstModule = modulesResponse.data.data[0];
+        if (moduleHasExpandableContent(firstModule)) {
+          setExpandedModules({ [firstModule._id]: true });
+        }
+        
+        // Auto-expand first topic and subtopic if available
+        if (firstModule.topics && firstModule.topics.length > 0) {
+          const firstTopic = firstModule.topics[0];
+          if (topicHasExpandableContent(firstTopic)) {
+            setExpandedTopics({ [firstTopic._id]: true });
+            if (firstTopic.subtopics && firstTopic.subtopics.length > 0) {
+              const firstSubtopic = firstTopic.subtopics[0];
+              if (subtopicHasExpandableContent(firstSubtopic)) {
+                setExpandedSubtopics({ [firstSubtopic._id]: true });
+              }
+            }
+          }
+        }
+        
+        // Try to find and select the first video
+        const firstVideo = findFirstVideoInHierarchy(firstModule);
+        if (firstVideo) {
+          const displayName = getDisplayName(firstModule);
+          const courseName = getCourseName(firstModule);
+          const videoWithTitle = createVideoWithTitle(firstVideo, displayName);
+          
+          setSelectedVideo({
+            ...videoWithTitle,
+            moduleName: displayName,
+            courseName
+          });
+        }
       }
       
     } catch (err: any) {
@@ -216,6 +500,96 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
     }
   };
 
+  const fetchAllVideoQuizzes = async (modulesList: Module[]) => {
+    const quizzes: Record<string, VideoQuiz> = {};
+    
+    for (const module of modulesList) {
+      const moduleName = getDisplayName(module);
+      const courseName = getCourseName(module);
+      
+      try {
+        // Check for module-level quiz
+        const moduleQuiz = await checkVideoQuizExists(moduleName, courseName);
+        if (moduleQuiz) {
+          quizzes[`video-${module._id}`] = moduleQuiz;
+        }
+        
+        // Check for video-specific quizzes
+        const allVideos = [
+          ...(module.videos || []),
+          ...(module.topics?.flatMap(topic => [
+            ...(topic.videos || []),
+            ...(topic.subtopics?.flatMap(subtopic => subtopic.videos || []) || [])
+          ]) || [])
+        ];
+        
+        for (const video of allVideos) {
+          if (video.videoTitle) {
+            try {
+              const videoQuiz = await checkVideoQuizExists(moduleName, courseName, video.videoTitle);
+              if (videoQuiz) {
+                quizzes[`video-${video._id}`] = videoQuiz;
+              }
+            } catch (error) {
+              console.log(`No quiz found for video: ${video.videoTitle}`);
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error fetching quizzes for module ${moduleName}:`, error);
+      }
+    }
+    
+    setVideoQuizzes(quizzes);
+  };
+
+  // Event handlers
+  const handleVideoSelect = (video: VideoItem, moduleName: string, topicName?: string, subtopicName?: string) => {
+    const courseName = course?.title || course?.subject || '';
+    setSelectedVideo({
+      ...video,
+      moduleName,
+      topicName,
+      subtopicName,
+      courseName
+    });
+    
+    if (window.innerWidth < 1024) {
+      setShowSidebar(false);
+    }
+  };
+
+
+  const handleShowQuiz = (video: VideoItem) => {
+    const quiz = videoQuizzes[`video-${video._id}`];
+    if (quiz) {
+      setSelectedQuiz(quiz);
+      setShowQuizModal(true);
+    }
+  };
+
+  const handleCreateQuiz = async (video: VideoItem) => {
+    if (!selectedVideo) return;
+    // Navigate to quiz creation page or open modal
+    console.log('Create quiz for video:', video);
+    // Implement quiz creation flow here
+  };
+
+  // Responsive sidebar handling
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setShowSidebar(false);
+      } else {
+        setShowSidebar(true);
+      }
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   useEffect(() => {
     if (courseId) {
       fetchCourseData();
@@ -225,100 +599,196 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
     }
   }, [courseId]);
 
-  const markAsCompleted = async (moduleId: string) => {
-    try {
-              const response = await axios.post(`/courses/modules/${moduleId}/complete`);
-      
-      if (response.data.success) {
-        setUserProgress(prev => ({ ...prev, [moduleId]: true }));
-        
-        // Update module completion status
-        setModules(prev => 
-          prev.map(m => m._id === moduleId ? { ...m, isCompleted: true } : m)
-        );
-        
-        // Update selected module if it's the one being marked
-        if (selectedModule?._id === moduleId) {
-          setSelectedModule({ ...selectedModule, isCompleted: true });
-        }
-        
-        // Update course progress
-        if (course) {
-          const completedCount = modules.filter(m => m._id === moduleId || m.isCompleted).length;
-          const newProgress = Math.round((completedCount / modules.length) * 100);
-          setCourse(prev => prev ? { ...prev, progress: newProgress } : null);
-        }
-
-        // Auto-advance to next module when current module is completed
-        if (selectedModule?._id === moduleId) {
-          const currentIndex = modules.findIndex(m => m._id === moduleId);
-          if (currentIndex < modules.length - 1) {
-            const nextModule = modules[currentIndex + 1];
-            setTimeout(() => {
-              handleModuleSelect(nextModule, currentIndex + 1);
-            }, 2000);
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Error marking module as completed:', err);
-      setError('Failed to mark module as completed');
-    }
-  };
-
-  const handleModuleSelect = (module: Module, moduleIndex: number) => {
-    // Check if module is unlocked before allowing selection
-    if (!isModuleUnlocked(moduleIndex)) {
-      console.log('Module is locked');
-      return;
-    }
-
-    setSelectedModule(module);
-    
-    if (window.innerWidth < 1024) {
-      setShowSidebar(false);
-    }
-  };
-
-  const handleNextModule = () => {
-    if (selectedModule) {
-      const currentIndex = modules.findIndex(m => m._id === selectedModule._id);
-      if (currentIndex < modules.length - 1) {
-        const nextModule = modules[currentIndex + 1];
-        if (isModuleUnlocked(currentIndex + 1)) {
-          handleModuleSelect(nextModule, currentIndex + 1);
-        }
-      }
-    }
-  };
-
-  const handlePreviousModule = () => {
-    if (selectedModule) {
-      const currentIndex = modules.findIndex(m => m._id === selectedModule._id);
-      if (currentIndex > 0) {
-        handleModuleSelect(modules[currentIndex - 1], currentIndex - 1);
-      }
-    }
-  };
-
-  const getDifficultyClass = (difficulty: string) => {
-    switch (difficulty) {
-      case 'Beginner': 
-        return darkMode ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-green-50 text-green-700 border-green-200';
-      case 'Intermediate': 
-        return darkMode ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' : 'bg-yellow-50 text-yellow-700 border-yellow-200';
-      case 'Advanced': 
-        return darkMode ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-red-50 text-red-700 border-red-200';
-      default: 
-        return darkMode ? 'bg-gray-500/10 text-gray-400 border-gray-500/20' : 'bg-gray-50 text-gray-700 border-gray-200';
-    }
-  };
-
   // Filter modules based on search query
-  const filteredModules = modules.filter(module =>
-    module.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    module.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredModules = modules.filter(module => {
+    const displayName = getDisplayName(module).toLowerCase();
+    const description = (module.description || '').toLowerCase();
+    const query = searchQuery.toLowerCase();
+    
+    return displayName.includes(query) || description.includes(query);
+  });
+
+  // Render functions
+  const renderVideo = (video: VideoItem, moduleName: string, topicName?: string, subtopicName?: string, level: number = 0) => {
+    const isSelected = selectedVideo?._id === video._id;
+    const hasQuiz = videoQuizzes[`video-${video._id}`];
+    const paddingClass = level === 0 ? 'pl-4' : level === 1 ? 'pl-8' : 'pl-12';
+    const videoTitle = video.videoTitle || (subtopicName || topicName || moduleName);
+    
+    return (
+      <div
+        key={video._id}
+        className={`
+          group flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all duration-300
+          ${paddingClass}
+          ${isSelected 
+            ? `${darkMode ? 'bg-white/10 hover:bg-white/10 border-blue-400 ring-1 ring-blue-400/60' : 'bg-gray-50 hover:bg-gray-50 border-blue-500 ring-1 ring-blue-300/70'} border-l-4 shadow-md scale-[1.01]` 
+            : `${themeClasses.hoverBg} border-transparent scale-100`
+          }
+        `}
+        onClick={() => handleVideoSelect(video, moduleName, topicName, subtopicName)}
+      >
+        <div className="flex items-center space-x-3 flex-1 min-w-0">
+          <div className={`
+            w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0
+            ${isSelected 
+              ? `text-white ${themeClasses.gradientBg}` 
+              : `${darkMode ? 'bg-white/5 text-gray-300' : 'bg-gray-100 text-gray-600'}`
+            }
+          `}>
+            <Play className="w-3 h-3" />
+          </div>
+          
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`
+                text-sm font-medium truncate
+                ${isSelected 
+                  ? `${darkMode ? 'text-blue-400' : 'text-blue-700'}` 
+                  : themeClasses.text
+                }
+              `}>
+                {videoTitle}
+              </span>
+              {/* removed per request: no playing icon on video rows */}
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {hasQuiz ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleShowQuiz(video);
+              }}
+              className={`p-1 rounded ${darkMode ? 'hover:bg-white/10' : 'hover:bg-gray-100'}`}
+              title="View Quiz"
+            >
+              <HelpCircle className="w-4 h-4 text-green-500" />
+            </button>
+          ) : (
+            user && (user.role === 'instructor' || user.role === 'admin') && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCreateQuiz(video);
+                }}
+                className={`p-1 rounded ${darkMode ? 'hover:bg-white/10' : 'hover:bg-gray-100'}`}
+                title="Create Quiz"
+              >
+                <Plus className="w-4 h-4 text-blue-500" />
+              </button>
+            )
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderSubtopic = (subtopic: Subtopic, moduleName: string, topicName: string) => {
+    const isExpanded = expandedSubtopics[subtopic._id];
+    const hasVideos = subtopic.videos && subtopic.videos.length > 0;
+    const isSubtopicActive = !!selectedVideo && selectedVideo.moduleName === moduleName && selectedVideo.topicName === topicName && selectedVideo.subtopicName === subtopic.subtopicname;
+    const activeRowClass = `${darkMode ? 'bg-white/10 ring-1 ring-blue-400/60' : 'bg-gray-50 ring-1 ring-blue-300/70'} border-l-4 ${darkMode ? 'border-blue-400' : 'border-blue-500'}`;
+
+    return (
+      <div key={subtopic._id} className="ml-6">
+        <div
+          className={`
+            flex items-center justify-between py-2 px-3 rounded-lg cursor-pointer transition-colors transition-transform duration-300
+            ${isSubtopicActive ? activeRowClass + ' shadow-sm scale-[1.01]' : themeClasses.hoverBg + ' scale-100'}
+          `}
+          onClick={() => hasVideos && handleSubtopicClick(subtopic, moduleName, topicName)}
+        >
+          <div className="flex items-center">
+            <div className={`w-4 h-4 mr-2 flex items-center justify-center`}>
+              <Video className="w-4 h-4 text-green-500" />
+            </div>
+            <span className={`text-sm font-medium ${themeClasses.textSecondary}`}>
+              {subtopic.subtopicname}
+            </span>
+            {/* removed per request: no playing icon on subtopic rows */}
+          </div>
+
+          <div className="flex items-center space-x-2">
+            {hasVideos && (
+              <span className={`text-xs ${themeClasses.textMuted}`}>
+                {Math.floor(Math.random() * (10 - 2 + 1)) + 2} min
+              </span>
+            )}
+            
+          </div>
+        </div>
+
+        {isExpanded && hasVideos && (
+          <div className="space-y-1 ml-2">
+            {subtopic.videos.map(video =>
+              renderVideo(video, moduleName, topicName, subtopic.subtopicname, 2)
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderTopic = (topic: Topic, moduleName: string) => {
+    const isExpanded = expandedTopics[topic._id];
+    const hasTopicVideos = topic.videos && topic.videos.length > 0;
+    const hasSubtopics = topic.subtopics && topic.subtopics.length > 0;
+    const hasContent = hasTopicVideos || hasSubtopics;
+    const hasExpandableContent = topicHasExpandableContent(topic);
+    const isTopicActive = !!selectedVideo && selectedVideo.moduleName === moduleName && selectedVideo.topicName === topic.topicname && !selectedVideo.subtopicName;
+    const activeRowClass = `${darkMode ? 'bg-white/10 ring-1 ring-blue-400/60' : 'bg-gray-50 ring-1 ring-blue-300/70'} border-l-4 ${darkMode ? 'border-blue-400' : 'border-blue-500'}`;
+    
+    return (
+      <div key={topic._id} className="ml-4">
+        <div
+          className={`
+            flex items-center justify-between py-2 px-3 rounded-lg cursor-pointer transition-colors transition-transform duration-300
+            ${isTopicActive ? activeRowClass + ' shadow-sm scale-[1.01]' : themeClasses.hoverBg + ' scale-100'}
+          `}
+          onClick={() => handleTopicClick(topic, moduleName)}
+        >
+          <div className="flex items-center">
+            <div className={`w-4 h-4 mr-2 flex items-center justify-center`}>
+              <Video className="w-4 h-4 text-blue-500" />
+            </div>
+            <span className={`text-sm font-medium ${themeClasses.textSecondary}`}>
+              {topic.topicname}
+            </span>
+            {/* removed per request: no playing icon on topic rows */}
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <span className={`text-xs ${themeClasses.textMuted}`}>
+              {Math.floor(Math.random() * (10 - 2 + 1)) + 2} min
+            </span>
+            {hasExpandableContent && (
+              <div className={`p-1 rounded ${themeClasses.iconBg}`}>
+                {isExpanded ? (
+                  <ChevronDown className={`w-4 h-4 ${themeClasses.iconColor}`} />
+                ) : (
+                  <ChevronRight className={`w-4 h-4 ${themeClasses.iconColor}`} />
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {isExpanded && hasContent && (
+          <div className="space-y-1 ml-2">
+            {topic.videos?.map(video => 
+              renderVideo(video, moduleName, topic.topicname, undefined, 1)
+            )}
+            {topic.subtopics?.map(subtopic => 
+              renderSubtopic(subtopic, moduleName, topic.topicname)
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   if (loading) {
     return (
@@ -348,7 +818,7 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
             to="/courses"
             className={`px-4 py-2 border rounded-lg transition-colors ${themeClasses.button}`}
           >
-            Back to Courses
+            Back to {user?.tenantId === 'default' ? 'Subjects' : 'Courses'}
           </Link>
         </div>
       </div>
@@ -367,20 +837,19 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
 
       {/* Sidebar */}
       <div className={`
-        fixed lg:static inset-y-0 left-0 z-50 w-80 ${themeClasses.sidebarBg}
+        ${showSidebar ? 'fixed lg:static' : 'fixed lg:fixed'} 
+        inset-y-0 left-0 z-50 w-80 ${themeClasses.sidebarBg}
         transform transition-transform duration-300 ease-in-out flex flex-col
-        ${showSidebar ? 'translate-x-0' : '-translate-x-full lg:-translate-x-full'}
+        ${showSidebar ? 'translate-x-0' : '-translate-x-full'}
         lg:w-96 border-r h-full
       `}>
         {/* Sidebar Header */}
         <div className={`flex-shrink-0 p-4 border-b ${themeClasses.divider} text-white ${themeClasses.gradientBg}`}>
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-bold">{course.title}</h2>
+              <h2 className="text-lg font-bold">{course.title || course.subject}</h2>
               <div className="flex items-center space-x-2 text-white/90 text-sm mt-1">
-                <span className="bg-white/20 px-2 py-1 rounded">{course.status}</span>
-                <span>•</span>
-                <span className="bg-white/20 px-2 py-1 rounded">{modules.length} Modules</span>
+                <span className="bg-white/20 px-2 py-1 rounded">{modules.length} {user?.tenantId === 'default' ? 'Chapters' : 'Modules'}</span>
               </div>
             </div>
           </div>
@@ -406,7 +875,7 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
             <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 ${themeClasses.textMuted}`} />
             <input
               type="text"
-              placeholder="Search modules..."
+              placeholder={isDefaultTenant ? 'Search chapters...' : 'Search modules...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${themeClasses.input}`}
@@ -428,98 +897,81 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
             {filteredModules.length === 0 ? (
               <div className={`text-center py-8 ${themeClasses.textMuted}`}>
                 <Video className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p>No modules found</p>
+                <p>No {user?.tenantId === 'default' ? 'chapters' : 'modules'} found</p>
               </div>
             ) : (
               <div className="space-y-2">
                 {filteredModules.map((module, index) => {
-                  const actualIndex = modules.findIndex(m => m._id === module._id);
-                  const isCurrentModule = selectedModule?._id === module._id;
-                  const isCompleted = module.isCompleted || userProgress[module._id];
-                  const isUnlocked = isModuleUnlocked(actualIndex);
+                  const isExpanded = expandedModules[module._id];
+                  const displayName = getDisplayName(module);
+                  const hasExpandableContent = moduleHasExpandableContent(module);
+                  const shouldShowContent = hasExpandableContent ? isExpanded : false;
+                  const isModuleActive = !!selectedVideo && selectedVideo.moduleName === displayName;
+                  const activeRowClass = `${darkMode ? 'bg-white/10 ring-1 ring-blue-400/60' : 'bg-gray-50 ring-1 ring-blue-300/70'} border-l-4 ${darkMode ? 'border-blue-400' : 'border-blue-500'}`;
                   
                   return (
-                    <div
-                      key={module._id}
-                      onClick={() => isUnlocked && handleModuleSelect(module, actualIndex)}
-                      className={`
-                        group p-3 rounded-lg transition-all duration-200 border
-                        ${isCurrentModule 
-                          ? `${darkMode ? 'bg-blue-500/10 border-blue-500/30' : 'bg-blue-50 border-blue-300'} border-l-4` 
-                          : isUnlocked 
-                            ? `${themeClasses.hoverBg} border-transparent cursor-pointer` 
-                            : 'border-transparent opacity-60 cursor-not-allowed'
-                        }
-                      `}
-                    >
-                      <div className="flex items-start space-x-3">
-                        <div className={`
-                          flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
-                          ${isCurrentModule 
-                            ? `text-white ${themeClasses.gradientBg}` 
-                            : isUnlocked
-                              ? `${darkMode ? 'bg-white/5 text-gray-300 group-hover:bg-blue-500/10 group-hover:text-blue-400' : 'bg-gray-100 text-gray-600 group-hover:bg-blue-50 group-hover:text-blue-600'}`
-                              : `${darkMode ? 'bg-white/5 text-gray-500' : 'bg-gray-200 text-gray-500'}`
-                          }
-                        `}>
-                          {!isUnlocked ? (
-                            <Lock className="w-3 h-3" />
-                          ) : isCompleted ? (
-                            <CheckCircle className="w-4 h-4 text-green-500" />
-                          ) : isCurrentModule ? (
-                            <Play className="w-3 h-3" />
-                          ) : (
-                            actualIndex + 1
-                          )}
-                        </div>
-                        
-                        <div className="flex-1 min-w-0">
-                          <h3 className={`
-                            font-semibold text-sm leading-tight mb-1
-                            ${isCurrentModule 
-                              ? `${darkMode ? 'text-blue-400' : 'text-blue-700'}` 
-                              : isUnlocked 
-                                ? themeClasses.text 
-                                : themeClasses.textMuted
-                            }
-                          `}>
-                            {module.title}
-                            {!isUnlocked && user && (
-                              <span className={`block text-xs ${themeClasses.textMuted} mt-1`}>
-                                Complete previous module to unlock
-                              </span>
-                            )}
-                          </h3>
-                          
-                          <div className={`flex items-center space-x-3 text-xs ${themeClasses.textMuted}`}>
-                            <span className="flex items-center">
-                              <Video className="w-3 h-3 mr-1" />
-                              {module.duration} min
-                            </span>
-                            <span className={`px-2 py-1 rounded border text-xs ${getDifficultyClass(module.difficulty)}`}>
-                              {module.difficulty}
-                            </span>
+                    <div key={module._id} className={`border rounded-lg ${themeClasses.card}`}>
+                      <div
+                        className={`p-3 cursor-pointer transition-all duration-300 rounded-lg ${themeClasses.hoverBg} ${isModuleActive && !hasExpandableContent ? (darkMode ? 'border-l-4 border-blue-400' : 'border-l-4 border-blue-500') : ''} scale-100`}
+                        onClick={() => handleModuleClick(module)}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start space-x-3 flex-1">
+                            <div className={`
+                              w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-1
+                              ${themeClasses.gradientBg} text-white
+                            `}>
+                              {index + 1}
+                            </div>
+                            
+                            <div className="flex-1 min-w-0">
+                              <h3 className={`font-semibold text-sm leading-tight mt-2.5 mb-1 ${themeClasses.text}`}>
+                                {displayName}
+                              </h3>
+                              <p className={`text-xs ${themeClasses.textMuted} mb-2 line-clamp-2`}>
+                                {module.description}
+                              </p>
+                            </div>
                           </div>
-
-                          {/* Progress indicator for current/completed modules */}
-                          {(isCompleted || isCurrentModule) && isUnlocked && (
-                            <div className="mt-2">
-                              <div className="flex justify-between items-center">
-                                {isCompleted ? (
-                                  <span className={`text-xs font-medium flex items-center ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                                    <CheckCircle className="w-3 h-3 mr-1" />
-                                    Completed
-                                  </span>
+                          
+                          <div className="flex items-center space-x-2">
+                            {isModuleActive && (
+                              <PlayCircle className={`${darkMode ? 'text-green-400' : 'text-green-600'} w-4 h-4 animate-pulse`} />
+                            )}
+                            {hasExpandableContent && (
+                              <div className={`p-1 rounded ${themeClasses.iconBg}`}>
+                                {isExpanded ? (
+                                  <ChevronDown className={`w-4 h-4 ${themeClasses.iconColor}`} />
                                 ) : (
-                                  <span className={`text-xs font-medium ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                                    In Progress
-                                  </span>
+                                  <ChevronRight className={`w-4 h-4 ${themeClasses.iconColor}`} />
                                 )}
                               </div>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                       </div>
+
+                      {shouldShowContent && (
+                        <div className="px-3 pb-3 space-y-1">
+                          {module.videoUrl && (
+                            renderVideo(
+                              {
+                                _id: module._id,
+                                videoUrl: module.videoUrl,
+                                videoTitle: displayName,
+                              },
+                              displayName,
+                              undefined,
+                              undefined,
+                              0
+                            )
+                          )}
+                          {module.videos?.map(video => 
+                            renderVideo(video, displayName, undefined, undefined, 0)
+                          )}
+                          {module.topics?.map(topic => renderTopic(topic, displayName))}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -528,68 +980,61 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
           </div>
         </div>
 
-        {/* Sidebar Footer */}
         <div className={`flex-shrink-0 p-4 border-t ${themeClasses.divider} ${darkMode ? 'bg-white/5' : 'bg-gray-50'}`}>
           <div className={`text-sm ${themeClasses.textMuted} text-center`}>
-            {modules.filter(m => m.isCompleted || userProgress[m._id]).length} of {modules.length} modules completed
+            {modules.filter(m => m.isCompleted || userProgress[m._id]).length} of {modules.length} {user?.tenantId === 'default' ? 'chapters' : 'modules'} completed
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className={`flex-1 flex flex-col overflow-hidden ${!showSidebar ? 'lg:max-w-6xl lg:mx-auto lg:w-full' : ''}`}>
-        {/* Top Bar */}
+      <div className={`
+        flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-in-out
+        ${showSidebar ? '' : 'ml-0'}
+      `}>
         <div className={`${themeClasses.topBarBg} shadow-sm border-b p-4`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => setShowSidebar(!showSidebar)}
-                className={`p-2 ${themeClasses.hoverBg} rounded-lg transition-colors lg:hidden`}
+                className={`p-2 ${themeClasses.hoverBg} rounded-lg transition-colors`}
               >
                 <Menu className={`w-5 h-5 ${themeClasses.text}`} />
               </button>
-              {selectedModule && (
-                <h1 className={`text-lg font-semibold ${themeClasses.text} hidden sm:block`}>
-                  {selectedModule.title}
-                </h1>
+              {selectedVideo && (
+                <div className="hidden sm:block">
+                  <h1 className={`text-lg font-semibold ${themeClasses.text}`}>
+                    {selectedVideo.courseName}
+                  </h1>
+                  <p className={`text-sm ${themeClasses.textMuted}`}>
+                    {selectedVideo.moduleName} 
+                    {selectedVideo.topicName && ` > ${selectedVideo.topicName}`}
+                    {selectedVideo.subtopicName && ` > ${selectedVideo.subtopicName}`}
+                  </p>
+                </div>
               )}
             </div>
             
-            {selectedModule && (
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={handlePreviousModule}
-                  disabled={modules.findIndex(m => m._id === selectedModule._id) === 0}
-                  className={`px-3 py-1 text-sm border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${themeClasses.button}`}
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={handleNextModule}
-                  disabled={
-                    modules.findIndex(m => m._id === selectedModule._id) === modules.length - 1 ||
-                    (!user ? false : !isModuleUnlocked(modules.findIndex(m => m._id === selectedModule._id) + 1))
-                  }
-                  className={`px-3 py-1 text-sm rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${themeClasses.buttonPrimary}`}
-                >
-                  Next
-                </button>
-              </div>
-            )}
+            <div className="flex items-center space-x-2">
+              <Link
+                to="/learner/courses"
+                className={`px-3 py-1 text-sm border rounded-lg transition-colors ${themeClasses.button}`}
+              >
+                Back to {user?.tenantId === 'default' ? 'Subjects' : 'Courses'}
+              </Link>
+            </div>
           </div>
         </div>
 
-        {/* Module Content */}
         <div className="flex-1 overflow-y-auto">
-          <div className="p-4 lg:p-6">
-            {selectedModule ? (
+          <div className={`p-4 lg:p-6 transition-all duration-300 ${!showSidebar ? 'max-w-7xl mx-auto' : ''}`}>
+            {selectedVideo ? (
               <div className="space-y-6">
-                {/* Video Player */}
                 <div className={`${themeClasses.card} rounded-xl shadow-lg overflow-hidden`}>
                   <div className="relative" style={{ paddingBottom: '56.25%' }}>
-                    {selectedModule.videoUrl ? (
+                    {selectedVideo.videoUrl ? (
                       (() => {
-                        const youtubeId = extractYoutubeId(selectedModule.videoUrl);
+                        const youtubeId = extractYoutubeId(selectedVideo.videoUrl);
                         return youtubeId ? (
                           <iframe
                             src={`https://www.youtube.com/embed/${youtubeId}?enablejsapi=1&origin=${window.location.origin}`}
@@ -618,76 +1063,59 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
                   </div>
                 </div>
 
-                {/* Module Info */}
                 <div className={`${themeClasses.card} rounded-xl p-6`}>
-                  <h1 className={`text-2xl font-bold ${themeClasses.text} mb-2`}>
-                    {selectedModule.title}
-                  </h1>
-                  
-                  <div className="flex flex-wrap items-center gap-3 mb-4">
-                    <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getDifficultyClass(selectedModule.difficulty)}`}>
-                      {selectedModule.difficulty}
-                    </span>
-                    <div className="flex items-center space-x-1">
-                      <Star className="h-4 w-4 text-yellow-500" />
-                      <span className={`text-sm ${themeClasses.textSecondary}`}>{selectedModule.rating || 'N/A'}</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <Users className="h-4 w-4 text-gray-500" />
-                      <span className={`text-sm ${themeClasses.textSecondary}`}>
-                        {selectedModule.enrolledUsers?.toLocaleString() || 0} enrolled
-                      </span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <Video className="h-4 w-4 text-gray-500" />
-                      <span className={`text-sm ${themeClasses.textSecondary}`}>{selectedModule.duration} min</span>
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex-1">
+                      <h1 className={`text-2xl font-bold ${themeClasses.text} mb-2`}>
+                        {selectedVideo.videoTitle || selectedVideo.courseName || 'Untitled Video'}
+                      </h1>
+                      <div className="flex flex-wrap items-center gap-3 mb-4">
+                        <div className="flex items-center space-x-2 text-sm">
+                          <BookOpen className="w-4 h-4 text-blue-500" />
+                          <span className={themeClasses.textSecondary}>{selectedVideo.moduleName}</span>
+                        </div>
+                        {selectedVideo.topicName && (
+                          <div className="flex items-center space-x-2 text-sm">
+                            <ChevronRight className="w-4 h-4 text-gray-400" />
+                            <span className={themeClasses.textSecondary}>{selectedVideo.topicName}</span>
+                          </div>
+                        )}
+                        {selectedVideo.subtopicName && (
+                          <div className="flex items-center space-x-2 text-sm">
+                            <ChevronRight className="w-4 h-4 text-gray-400" />
+                            <span className={themeClasses.textSecondary}>{selectedVideo.subtopicName}</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-
-                  <p className={`${themeClasses.textSecondary} mb-6 leading-relaxed`}>{selectedModule.description}</p>
-                  
-                  {/* Action Buttons */}
                   <div className="flex flex-wrap gap-3">
-                    <button
-                      onClick={() => markAsCompleted(selectedModule._id)}
-                      disabled={selectedModule.isCompleted || userProgress[selectedModule._id]}
-                      className={`px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 ${
-                        selectedModule.isCompleted || userProgress[selectedModule._id]
-                          ? `${darkMode ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-green-50 text-green-700 border border-green-200'} cursor-not-allowed`
-                          : `${themeClasses.buttonPrimary} shadow-lg hover:shadow-xl cursor-pointer`
-                      }`}
-                    >
-                      {selectedModule.isCompleted || userProgress[selectedModule._id] ? (
-                        <>
-                          <CheckCircle className="h-5 w-5" />
-                          <span>Completed</span>
-                        </>
-                      ) : (
-                        <>
-                          <Award className="h-5 w-5" />
-                          <span>Mark as Complete</span>
-                        </>
-                      )}
-                    </button>
-
+                    {videoQuizzes[`video-${selectedVideo._id}`] ? (
+                      <button
+                        onClick={() => handleShowQuiz(selectedVideo)}
+                        className={`px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 ${themeClasses.buttonPrimary} shadow-lg hover:shadow-xl`}
+                      >
+                        <HelpCircle className="h-5 w-5" />
+                        <span>Take Quiz</span>
+                      </button>
+                    ) : (
+                      user && (user.role === 'instructor' || user.role === 'admin') && (
+                        <button
+                          onClick={() => handleCreateQuiz(selectedVideo)}
+                          className={`px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 ${themeClasses.buttonPrimary} shadow-lg hover:shadow-xl`}
+                        >
+                          <Plus className="h-5 w-5" />
+                          <span>Create Quiz</span>
+                        </button>
+                      )
+                    )}
                     <button className={`px-6 py-3 border rounded-lg transition-colors font-medium flex items-center space-x-2 ${themeClasses.button}`}>
                       <Download className="h-5 w-5" />
                       <span>Resources</span>
                     </button>
-
-                    {modules.findIndex(m => m._id === selectedModule._id) < modules.length - 1 && 
-                     (user ? isModuleUnlocked(modules.findIndex(m => m._id === selectedModule._id) + 1) : true) && (
-                      <button
-                        onClick={handleNextModule}
-                        className={`px-6 py-3 border rounded-lg transition-colors font-medium ${themeClasses.button}`}
-                      >
-                        Next Module
-                      </button>
-                    )}
                   </div>
                 </div>
 
-                {/* Learning Outcomes */}
                 <div className={`${themeClasses.card} rounded-xl p-6`}>
                   <h3 className={`flex items-center space-x-2 text-lg font-medium ${themeClasses.text} mb-4`}>
                     <FileText className={`h-5 w-5 ${themeClasses.iconColor}`} />
@@ -695,10 +1123,10 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
                   </h3>
                   <ul className="space-y-3">
                     {[
-                      `Complete understanding of ${selectedModule.title.toLowerCase()}`,
-                      'Best practices and industry standards',
-                      'Practical exercises and real-world examples',
-                      'Tools and resources for implementation'
+                      `Complete understanding of ${(selectedVideo.videoTitle || selectedVideo.moduleName || 'the topic').toLowerCase()}`,
+                      "Best practices and industry standards",
+                      "Practical exercises and real-world examples",
+                      "Tools and resources for implementation",
                     ].map((outcome, index) => (
                       <li key={index} className="flex items-start space-x-3">
                         <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0 mt-0.5" />
@@ -707,30 +1135,60 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
                     ))}
                   </ul>
                 </div>
+
+                {videoQuizzes[`video-${selectedVideo._id}`] && (
+                  <div className={`${themeClasses.card} rounded-xl p-6`}>
+                    <h3 className={`flex items-center space-x-2 text-lg font-medium ${themeClasses.text} mb-4`}>
+                      <HelpCircle className={`h-5 w-5 ${themeClasses.iconColor}`} />
+                      <span>Quiz Available</span>
+                    </h3>
+                    <p className={`${themeClasses.textSecondary} mb-4`}>
+                      Test your knowledge with our interactive quiz covering the key concepts from this video.
+                    </p>
+                    <button
+                      onClick={() => handleShowQuiz(selectedVideo)}
+                      className={`px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 ${themeClasses.buttonPrimary}`}
+                    >
+                      <Play className="h-5 w-5" />
+                      <span>Start Quiz</span>
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <div className={`${themeClasses.card} rounded-xl p-12 text-center`}>
-                <BookOpen className="h-16 w-16 mx-auto mb-4 text-gray-400" />
-                <h2 className={`text-2xl font-bold ${themeClasses.text} mb-2`}>Welcome to {course.title}</h2>
-                <p className={`${themeClasses.textSecondary} mb-6`}>Select a module from the sidebar to begin your learning journey</p>
+                <Video className="h-16 w-16 mx-auto mb-4 text-gray-400" />
+                <h2 className={`text-2xl font-bold ${themeClasses.text} mb-2`}>
+                  Welcome to {course.title || course.subject}
+                </h2>
+                <p className={`${themeClasses.textSecondary} mb-6`}>
+                  Click on any module, topic, or subtopic to start playing the first video
+                </p>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-md mx-auto">
                   <div className={`${darkMode ? 'bg-blue-500/10' : 'bg-blue-50'} rounded-lg p-4 text-center`}>
-                    <div className={`text-2xl font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>{modules.length}</div>
-                    <div className={themeClasses.textSecondary}>Modules</div>
+                    <div className={`text-2xl font-bold ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                      {modules.length}
+                    </div>
+                    <div className={themeClasses.textSecondary}>
+                      {user?.tenantId === 'default' ? 'Chapters' : 'Modules'}
+                    </div>
                   </div>
                   <div className={`${darkMode ? 'bg-green-500/10' : 'bg-green-50'} rounded-lg p-4 text-center`}>
-                    <div className={`text-2xl font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{course.progress || 0}%</div>
-                    <div className={themeClasses.textSecondary}>Complete</div>
-                  </div>
-                  <div className={`${darkMode ? 'bg-yellow-500/10' : 'bg-yellow-50'} rounded-lg p-4 text-center`}>
-                    <div className={`text-2xl font-bold ${darkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                      {modules.length > 0 ? 
-                        Math.round(modules.reduce((acc, mod) => acc + (mod.rating || 0), 0) / modules.length * 10) / 10 : 
-                        0
-                      }★
+                    <div className={`text-2xl font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                      {modules.reduce((acc, mod) => 
+                        acc + (mod.videoUrl ? 1 : 0) + (mod.videos?.length || 0) + 
+                        (mod.topics?.reduce((acc2, topic) => 
+                          acc2 + (topic.videos?.length || 0) + 
+                          (topic.subtopics?.reduce((acc3, st) => acc3 + (st.videos?.length || 0), 0) || 0), 0) || 0), 0)}
                     </div>
-                    <div className={themeClasses.textSecondary}>Rating</div>
+                    <div className={themeClasses.textSecondary}>Total Videos</div>
+                  </div>
+                  <div className={`${darkMode ? 'bg-purple-500/10' : 'bg-purple-50'} rounded-lg p-4 text-center`}>
+                    <div className={`text-2xl font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                      {Object.keys(videoQuizzes).length}
+                    </div>
+                    <div className={themeClasses.textSecondary}>Quizzes</div>
                   </div>
                 </div>
               </div>
@@ -738,6 +1196,64 @@ const ExploreCourses = ({ darkMode }: { darkMode: boolean }) => {
           </div>
         </div>
       </div>
+
+      {showQuizModal && selectedQuiz && (
+        <div className={`fixed inset-0 z-50 ${themeClasses.overlay} flex items-center justify-center p-4`}>
+          <div className={`${themeClasses.dialog} rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto`}>
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className={`text-2xl font-bold ${themeClasses.text}`}>
+                  Quiz: {selectedQuiz.videoTitle}
+                </h2>
+                <button
+                  onClick={() => setShowQuizModal(false)}
+                  className={`p-2 ${themeClasses.hoverBg} rounded-lg`}
+                >
+                  <XMarkIcon className={`w-6 h-6 ${themeClasses.text}`} />
+                </button>
+              </div>
+              
+              <div className="space-y-6">
+                {(selectedQuiz.quiz || selectedQuiz.questions || []).map((question, index) => (
+                  <div key={index} className={`p-4 border rounded-lg ${themeClasses.divider}`}>
+                    <h3 className={`font-semibold mb-3 ${themeClasses.text}`}>
+                      {index + 1}. {question.que}
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4">
+                      {Object.entries(question.opt).map(([key, value]) => (
+                        <div
+                          key={key}
+                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                            key === question.correctAnswer
+                              ? `${themeClasses.success} border-2`
+                              : `${themeClasses.card} ${themeClasses.hoverBg}`
+                          }`}
+                        >
+                          <span className="font-medium">{key.toUpperCase()})</span> {value}
+                        </div>
+                      ))}
+                    </div>
+                    <div className={`p-3 rounded-lg ${themeClasses.success}`}>
+                      <p className="text-sm">
+                        <strong>Explanation:</strong> {question.explanation}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="flex justify-end mt-6">
+                <button
+                  onClick={() => setShowQuizModal(false)}
+                  className={`px-6 py-3 rounded-lg ${themeClasses.buttonPrimary}`}
+                >
+                  Close Quiz
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

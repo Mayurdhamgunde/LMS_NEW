@@ -1,605 +1,252 @@
-import { useState, useEffect, useContext } from 'react'
-import { Link } from 'react-router-dom'
-import { useNavigate } from 'react-router-dom'
-import axios from 'axios'
-import AuthContext from '../../context/AuthContext'
-import {
-  AcademicCapIcon,
-  ArrowPathIcon,
-  CheckCircleIcon,
-  PlusIcon,
-  PencilIcon,
-  TrashIcon,
-  XMarkIcon,
-  MagnifyingGlassIcon,
-  ArrowsUpDownIcon,
-  VideoCameraIcon
-} from '@heroicons/react/24/outline'
+
+import { useState, useEffect, useContext } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import AuthContext from '../../context/AuthContext';
 
 interface Course {
-  _id: string
-  title: string
-  description: string
-  slug: string
-  price: number
-  status: string
-  isPublic: boolean
-  iconName?: string
-  tenantId: string
-  createdAt: string
-  updatedAt: string
-}
-
-interface Module {
-  _id: string
-  title: string
-  description: string
-  duration: string
-  courseId: {
-    _id: string
-    title: string
-    description: string
-    calculatedProgress: number
-    id: string
-  }
-  isCompleted: boolean
-  videoUrl: string
-  difficulty: string
-  rating: number
-  enrolledUsers: number
-  tenantId: string
-  createdAt: string
-  updatedAt: string
-  id: string
+  _id: string;
+  title: string;
+  description: string;
+  price: number;
+  status: string;
+  tenantId: string;
+  createdAt: string;
+  board?: string;
+  grade?: string;
+  medium?: string[];
+  subject?: string;
+  coverImg?: string;
+  courseProgress?: number;
+  enrolledStd?: number;
+  rating?: number;
+  duration?: string;
+  lessons?: number;
 }
 
 interface CoursesResponse {
-  success: boolean
-  data: Course[]
+  success: boolean;
+  data: Course[];
   pagination: {
-    currentPage: number
-    totalPages: number
-    totalCount: number
-    hasNextPage: boolean
-    hasPrevPage: boolean
-    limit: number
-  }
-}
-
-interface ModulesResponse {
-  success: boolean
-  count: number
-  data: Module[]
+    totalCount: number;
+    totalPages: number;
+    currentPage: number;
+    hasNextPage: boolean;
+    hasPrevPage: boolean;
+    limit: number;
+  };
 }
 
 const Courses = ({ darkMode }: { darkMode: boolean }) => {
-  const themeClasses = {
-    bg: darkMode ? 'bg-gray-900' : 'bg-gray-50',
-    cardBg: darkMode ? 'bg-white/5 backdrop-blur-sm' : 'bg-white shadow-sm',
-    cardHover: darkMode ? 'bg-white/5 backdrop-blur-sm' : 'bg-white shadow-lg',
-    border: darkMode ? 'border-white/10' : 'border-gray-200',
-    text: darkMode ? 'text-white' : 'text-gray-900',
-    textSecondary: darkMode ? 'text-gray-400' : 'text-gray-600',
-    textMuted: darkMode ? 'text-gray-400' : 'text-gray-500',
-    textAccent: darkMode ? 'text-blue-400' : 'text-blue-600',
-    hoverBg: darkMode ? 'hover:bg-white/10' : 'hover:bg-gray-100',
-    buttonText: darkMode ? 'text-white' : 'text-gray-900',
-    skeletonBg: darkMode ? 'bg-white/10' : 'bg-gray-200',
-    inputBg: darkMode ? 'bg-gray-700' : 'bg-white',
-    input: darkMode 
-      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500',
-    button: darkMode
-      ? 'border-white/10 text-white hover:bg-white/5'
-      : 'border-gray-300 text-gray-700 hover:bg-gray-50',
-    dialogBg: darkMode ? 'bg-gray-800' : 'bg-white',
-    dialogBorder: darkMode ? 'border-gray-700' : 'border-gray-200',
-    overlay: darkMode ? 'bg-black/50' : 'bg-gray-900/50',
-    gradientBg: darkMode 
-      ? 'bg-gradient-to-r from-blue-500/20 to-purple-500/20' 
-      : 'bg-gradient-to-r from-blue-100 to-purple-100',
-    notification: {
-      success: darkMode 
-        ? 'bg-green-500/10 border-green-500/20 text-green-400'
-        : 'bg-green-50 border-green-200 text-green-700',
-      error: darkMode 
-        ? 'bg-red-500/10 border-red-500/20 text-red-400'
-        : 'bg-red-50 border-red-200 text-red-700',
-      info: darkMode 
-        ? 'bg-blue-500/10 border-blue-500/20 text-blue-400'
-        : 'bg-blue-50 border-blue-200 text-blue-700'
+  const { user } = useContext(AuthContext);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [limit] = useState(9);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    fetchCourses();
+  }, [currentPage]);
+
+  const fetchCourses = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await axios.get<CoursesResponse>(`/courses?page=${currentPage}&limit=${limit}`);
+      if (res.data.success) {
+        setCourses(res.data.data);
+        setTotalCount(res.data.pagination.totalCount);
+        setTotalPages(res.data.pagination.totalPages);
+      } else {
+        setError('Failed to load courses. Please try again later.');
+      }
+    } catch (err: any) {
+      console.error('Failed to load courses:', err);
+      setError('Failed to load courses. Please try again later.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const { user } = useContext(AuthContext)
-  const [courses, setCourses] = useState<Course[]>([])
-  const [filteredCourses, setFilteredCourses] = useState<Course[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [totalRecords, setTotalRecords] = useState(0)
-  const [sortByLevel, setSortByLevel] = useState(false)
-  
-  // Module related states
-  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null)
-  const [modules, setModules] = useState<Module[]>([])
-  const [modulesLoading, setModulesLoading] = useState(false)
-  const [modulesError, setModulesError] = useState<string | null>(null)
-  const [openModulesDialog, setOpenModulesDialog] = useState(false)
-  const [openAddModuleDialog, setOpenAddModuleDialog] = useState(false)
-  const [openEditModuleDialog, setOpenEditModuleDialog] = useState(false)
-  const [addingModule, setAddingModule] = useState(false)
-  const [editingModule, setEditingModule] = useState(false)
-  const [moduleToEdit, setModuleToEdit] = useState<Module | null>(null)
-  const [moduleToDelete, setModuleToDelete] = useState<Module | null>(null)
-  const [deletingModule, setDeletingModule] = useState(false)
-  
-  // Delete and Update states
-  const [openDeleteDialog, setOpenDeleteDialog] = useState(false)
-  const [courseToDelete, setCourseToDelete] = useState<Course | null>(null)
-  const [deleting, setDeleting] = useState(false)
-  const [courseToEdit, setCourseToEdit] = useState<Course | null>(null)
-  const [editing, setEditing] = useState(false)
-  
-  // Success/error notifications
-  const [notification, setNotification] = useState({
-    open: false,
-    message: '',
-    type: 'success' as 'success' | 'error' | 'info'
-  })
-  
-  const navigate = useNavigate()
-  
-  // New module form state
-  const [newModule, setNewModule] = useState({
-    title: '',
-    description: '',
-    duration: '',
-    difficulty: 'Beginner',
-    videoUrl: '',
-    rating: 4.5
-  })
+  const pageTitle = user?.tenantId === 'default' ? 'Subjects' : 'Courses';
 
-  const coursesPerPage = 9
-
-  useEffect(() => {
-    const fetchCourses = async () => {
-      setLoading(true)
-      setError(null)
-      
-      try {
-        const res = await axios.get<CoursesResponse>('/courses', {
-          timeout: 10000
-        })
-        
-        if (res.data.success) {
-          const { data: courses, pagination } = res.data
-          
-          setCourses(courses)
-          setFilteredCourses(courses)
-          setTotalRecords(pagination.totalCount)
-          setTotalPages(pagination.totalPages)
-          setPage(pagination.currentPage)
-        } else {
-          setError('Failed to load courses. Please try again later.')
-        }
-      } catch (err: any) {
-        console.error('Failed to load courses:', err)
-        if (err.response) {
-          if (err.response.status === 503) {
-            setError('The server is temporarily unavailable. Please try again in a moment.')
-          } else if (err.response.status === 401) {
-            setError('Your session has expired. Please log in again.')
-          } else {
-            setError(err.response.data?.error || 'Failed to load courses. Please try again later.')
-          }
-        } else if (err.request) {
-          setError('No response from server. Please check your connection.')
-        } else {
-          setError('Failed to load courses. Please try again later.')
-        }
-      } finally {
-        setLoading(false)
-      }
-    }
-    
-    fetchCourses()
-    
-    const fromCreateCourse = window.location.search.includes('newCourse=true')
-    if (fromCreateCourse) {
-      const retryTimer = setTimeout(() => {
-        fetchCourses()
-      }, 2000)
-      
-      return () => clearTimeout(retryTimer)
-    }
-  }, [])
-
-  useEffect(() => {
-    let results = courses.filter(course =>
-      course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      course.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (course.slug && course.slug.toLowerCase().includes(searchTerm.toLowerCase()))
-    )
-
-    if (sortByLevel) {
-      results = results.sort((a, b) => 
-        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      )
-    }
-
-    setFilteredCourses(results)
-    setTotalPages(Math.ceil(results.length / coursesPerPage))
-    setPage(1)
-  }, [searchTerm, courses, sortByLevel])
-
-  const fetchModules = async (courseId: string) => {
-    setModulesLoading(true)
-    setModulesError(null)
-    try {
-              const res = await axios.get<ModulesResponse>(
-          `/courses/${courseId}/modules`
-        )
-      if (res.data.success) {
-        setModules(res.data.data)
-      } else {
-        setModulesError('Failed to load modules')
-      }
-    } catch (err: any) {
-      console.error('Failed to load modules:', err)
-      setModulesError('Failed to load modules. Please try again.')
-    } finally {
-      setModulesLoading(false)
-    }
-  }
-
-  const handleViewModules = (course: Course) => {
-    setSelectedCourse(course)
-    fetchModules(course._id)
-    setOpenModulesDialog(true)
-  }
-
-  const handleAddModule = () => {
-    setOpenAddModuleDialog(true)
-  }
-
-  const handleAddModuleSubmit = async () => {
-    if (!selectedCourse) return
-    
-    setAddingModule(true)
-    
-    try {
-      const modulePayload = {
-        title: newModule.title,
-        description: newModule.description,
-        duration: parseInt(newModule.duration),
-        videoUrl: newModule.videoUrl,
-        difficulty: newModule.difficulty,
-        rating: newModule.rating
-      }
-      
-      const res = await axios.post(
-        `/courses/${selectedCourse._id}/modules`,
-        modulePayload
-      )
-      
-      if (res.data.success) {
-        setNotification({
-          open: true,
-          message: 'Module added successfully!',
-          type: 'success'
-        })
-        
-        fetchModules(selectedCourse._id)
-        setOpenAddModuleDialog(false)
-        setNewModule({
-          title: '',
-          description: '',
-          duration: '',
-          difficulty: 'Beginner',
-          videoUrl: '',
-          rating: 4.5
-        })
-      } else {
-        throw new Error(res.data.message || 'Failed to add module')
-      }
-    } catch (err: any) {
-      console.error('Failed to add module:', err)
-      
-      let errorMessage = 'Failed to add module. Please try again.'
-      
-      if (err.response?.data?.message) {
-        errorMessage = err.response.data.message
-      } else if (err.message) {
-        errorMessage = err.message
-      }
-      
-      setNotification({
-        open: true,
-        message: errorMessage,
-        type: 'error'
-      })
-      
-      setModulesError(errorMessage)
-    } finally {
-      setAddingModule(false)
-    }
-  }
-
-  const handleEditModule = (module: Module) => {
-    setModuleToEdit(module)
-    setNewModule({
-      title: module.title,
-      description: module.description,
-      duration: module.duration.toString(),
-      difficulty: module.difficulty,
-      videoUrl: module.videoUrl,
-      rating: module.rating
-    })
-    setOpenEditModuleDialog(true)
-  }
-
-  const handleUpdateModule = async () => {
-    if (!moduleToEdit || !selectedCourse) return
-    
-    setEditingModule(true)
-    
-    try {
-      const modulePayload = {
-        title: newModule.title,
-        description: newModule.description,
-        duration: parseInt(newModule.duration),
-        videoUrl: newModule.videoUrl,
-        difficulty: newModule.difficulty,
-        rating: newModule.rating
-      }
-      
-              const res = await axios.put(
-          `/courses/${selectedCourse._id}/modules/${moduleToEdit._id}`,
-          modulePayload
-        )
-      
-      if (res.data.success) {
-        setNotification({
-          open: true,
-          message: 'Module updated successfully!',
-          type: 'success'
-        })
-        
-        fetchModules(selectedCourse._id)
-        setOpenEditModuleDialog(false)
-        setModuleToEdit(null)
-      } else {
-        throw new Error(res.data.message || 'Failed to update module')
-      }
-    } catch (err: any) {
-      console.error('Failed to update module:', err)
-      setNotification({
-        open: true,
-        message: err.response?.data?.message || 'Failed to update module',
-        type: 'error'
-      })
-    } finally {
-      setEditingModule(false)
-    }
-  }
-
-  const handleDeleteModule = (module: Module) => {
-    setModuleToDelete(module)
-  }
-
-  const confirmDeleteModule = async () => {
-    if (!moduleToDelete || !selectedCourse) return
-    
-    setDeletingModule(true)
-    try {
-              const res = await axios.delete(
-          `/courses/${selectedCourse._id}/modules/${moduleToDelete._id}`
-        )
-      
-      if (res.data.success) {
-        setNotification({
-          open: true,
-          message: 'Module deleted successfully!',
-          type: 'success'
-        })
-        
-        fetchModules(selectedCourse._id)
-      } else {
-        throw new Error(res.data.message || 'Failed to delete module')
-      }
-    } catch (err: any) {
-      console.error('Failed to delete module:', err)
-      setNotification({
-        open: true,
-        message: err.response?.data?.message || 'Failed to delete module',
-        type: 'error'
-      })
-    } finally {
-      setDeletingModule(false)
-      setModuleToDelete(null)
-    }
-  }
-
-  const handleDeleteCourse = (course: Course) => {
-    setCourseToDelete(course)
-    setOpenDeleteDialog(true)
-  }
-
-  const confirmDeleteCourse = async () => {
-    if (!courseToDelete) return
-    
-    setDeleting(true)
-    try {
-              const response = await axios.delete(
-          `/courses/${courseToDelete._id}`
-        )
-      
-      if (response.data.success) {
-        setNotification({
-          open: true,
-          message: 'Course deleted successfully!',
-          type: 'success'
-        })
-        setCourses(courses.filter(course => course._id !== courseToDelete._id))
-        setFilteredCourses(filteredCourses.filter(course => course._id !== courseToDelete._id))
-      }
-    } catch (err: any) {
-      console.error('Failed to delete course:', err)
-      setNotification({
-        open: true,
-        message: 'Failed to delete course. Please try again.',
-        type: 'error'
-      })
-    } finally {
-      setDeleting(false)
-      setOpenDeleteDialog(false)
-      setCourseToDelete(null)
-    }
-  }
-
-  const handleEditCourse = (course: Course) => {
-    setCourseToEdit(course)
-    navigate(`/coursestest/update/${course._id}`)
-  }
-
-  const handleCloseNotification = () => {
-    setNotification({ ...notification, open: false })
-  }
+  // Theme classes for light/dark mode consistency
+  const themeClasses = {
+    container: darkMode ? 'bg-gray-900' : 'bg-gray-100',
+    card: darkMode ? 'bg-white/5 backdrop-blur-sm' : 'bg-white',
+    divider: darkMode ? 'border-white/10' : 'border-gray-200',
+    text: darkMode ? 'text-white' : 'text-gray-900',
+    textMuted: darkMode ? 'text-gray-400' : 'text-gray-600',
+    textSecondary: darkMode ? 'text-gray-300' : 'text-gray-700',
+    progress: darkMode ? 'bg-white/10' : 'bg-gray-200',
+    gradientPanel: darkMode ? 'bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-indigo-500/10' : 'bg-gradient-to-br from-indigo-100 to-purple-100',
+    cardHover: darkMode ? 'hover:border-blue-500/20 hover:shadow-[0_10px_30px_-10px_rgba(59,130,246,0.3)]' : 'hover:shadow-xl',
+    chipIndigo: darkMode ? 'bg-blue-500/10 text-blue-300' : 'bg-indigo-50 text-indigo-700',
+    chipGreen: darkMode ? 'bg-green-500/10 text-green-300' : 'bg-green-50 text-green-700',
+    chipPurple: darkMode ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-50 text-purple-700',
+    buttonPrimary: darkMode ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-500 hover:to-purple-500' : 'bg-indigo-600 text-white hover:bg-indigo-700'
+  };
 
   const handleEnrollAndRedirect = async (courseId: string) => {
-    try {
-      // Redirect to the ExploreCourses page
-      navigate(`/explore-courses/${courseId}`);
-    } catch (err: any) {
-      setError('Failed to navigate to course. Please try again.');
-      console.error(err);
-    }
+    navigate(`/explore-courses/${courseId}`);
   };
 
-  const handlePageChange = (value: number) => {
-    setPage(value)
-  }
+  const renderStars = (rating: number = 0) => {
+    const stars = [];
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 >= 0.5;
 
-  const handleFilterToggle = () => {
-    setSortByLevel(!sortByLevel)
-  }
+    for (let i = 1; i <= 5; i++) {
+      if (i <= fullStars) {
+        stars.push(
+          <svg key={i} className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+          </svg>
+        );
+      } else if (i === fullStars + 1 && hasHalfStar) {
+        stars.push(
+          <svg key={i} className="w-4 h-4 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+          </svg>
+        );
+      } else {
+        stars.push(
+          <svg key={i} className="w-4 h-4 text-gray-300" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+          </svg>
+        );
+      }
+    }
 
-  const paginatedCourses = filteredCourses.slice(
-    (page - 1) * coursesPerPage,
-    page * coursesPerPage
-  )
+    return (
+      <div className="flex items-center">
+        <div className="flex">{stars}</div>
+        <span className="ml-1 text-xs text-gray-500">({rating.toFixed(1)})</span>
+      </div>
+    );
+  };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
-    })
-  }
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
 
-  // Validation for add module form
-  const isModuleFormValid = () => {
-    return newModule.title.trim() && 
-           newModule.description.trim() && 
-           newModule.duration.trim() && 
-           newModule.videoUrl.trim() &&
-           !isNaN(parseInt(newModule.duration)) &&
-           parseInt(newModule.duration) > 0
-  }
+    const pages = [];
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    pages.push(
+      <button
+        key="prev"
+        onClick={() => setCurrentPage(currentPage - 1)}
+        disabled={currentPage === 1}
+        className={`flex items-center px-4 py-2 rounded-full border ${themeClasses.divider} ${darkMode ? 'bg-white/5 text-gray-200 hover:bg-white/10' : 'bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-300'} disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 cursor-pointer`}
+      >
+        <svg className="w-4 h-4 mr-1 rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        Prev
+      </button>
+    );
+
+    if (startPage > 1) {
+      pages.push(
+        <button
+          key={1}
+          onClick={() => setCurrentPage(1)}
+          className={`px-4 py-2 rounded-full border ${themeClasses.divider} ${darkMode ? 'bg-white/5 text-gray-200 hover:bg-white/10' : 'bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-300'} transition-all duration-200 cursor-pointer`}
+        >
+          1
+        </button>
+      );
+      if (startPage > 2) {
+        pages.push(<span key="ellipsis1" className="px-2 text-gray-500">...</span>);
+      }
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      pages.push(
+        <button
+          key={i}
+          onClick={() => setCurrentPage(i)}
+          className={`px-4 py-2 rounded-full border transition-all duration-200 cursor-pointer ${
+            currentPage === i
+              ? (darkMode ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white border-transparent shadow-md' : 'bg-indigo-600 text-white border-indigo-600')
+              : `${themeClasses.divider} ${darkMode ? 'bg-white/5 text-gray-200 hover:bg-white/10' : 'bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-300'}`
+          }`}
+        >
+          {i}
+        </button>
+      );
+    }
+
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) {
+        pages.push(<span key="ellipsis2" className="px-2 text-gray-500">...</span>);
+      }
+      pages.push(
+        <button
+          key={totalPages}
+          onClick={() => setCurrentPage(totalPages)}
+          className={`px-4 py-2 rounded-full border ${themeClasses.divider} ${darkMode ? 'bg-white/5 text-gray-200 hover:bg-white/10' : 'bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-300'} transition-all duration-200 cursor-pointer`}
+        >
+          {totalPages}
+        </button>
+      );
+    }
+
+    pages.push(
+      <button
+        key="next"
+        onClick={() => setCurrentPage(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        className={`flex items-center px-4 py-2 rounded-full border ${themeClasses.divider} ${darkMode ? 'bg-white/5 text-gray-200 hover:bg-white/10' : 'bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-300'} disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 cursor-pointer`}
+      >
+        Next
+        <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+    );
+
+    return pages;
+  };
 
   return (
-    <div className={`min-h-screen ${themeClasses.bg} ${themeClasses.text}`}>
-      {/* Main Content */}
-      <div className="container mx-auto px-4 py-8">
+    <div className={`min-h-screen ${themeClasses.container} py-12 px-4 sm:px-6 lg:px-8`}>
+      <div className="max-w-7xl mx-auto">
         {/* Header Section */}
-<div className="mb-8 space-y-4">
-  
-  {/* First Row: Title */}
-  <div className="flex items-center gap-4">
-    <div className="w-10 h-10 rounded-full bg-blue-500 flex items-center justify-center shadow-lg">
-      <AcademicCapIcon className="h-6 w-6 text-white" />
-    </div>
-    <div>
-      <h1 className={`text-2xl md:text-3xl font-bold ${themeClasses.text}`}>Courses</h1>
-      <p className={themeClasses.textMuted}>{totalRecords} courses available</p>
-    </div>
-  </div>
-
-  {/* Second Row: Search 70% + Sort 30% */}
-  <div className="flex gap-3">
-    {/* Search Bar */}
-    <div className={`relative w-[70%] ${themeClasses.inputBg} rounded-lg`}>
-      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-        <MagnifyingGlassIcon className={`h-5 w-5 ${themeClasses.textMuted}`} />
-      </div>
-      <input
-        type="text"
-        placeholder="Search courses..."
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        className={`pl-10 pr-4 py-3 w-full rounded-lg border text-base ${themeClasses.input}`}
-      />
-    </div>
-
-    {/* Sort Button */}
-    <button
-      onClick={handleFilterToggle}
-      className={`w-[30%] px-5 py-3 rounded-lg border flex items-center justify-center gap-2 ${themeClasses.button} text-base`}
-    >
-      <ArrowsUpDownIcon className="h-5 w-5" />
-      <span>Sort & Filter</span>
-    </button>
-  </div>
-</div>
-
-
-        {/* Filter Status */}
-        {sortByLevel && (
-          <div className={`mb-6 border rounded-lg p-4 flex items-center gap-2 ${themeClasses.notification.info}`}>
-            <ArrowsUpDownIcon className="h-5 w-5" />
-            <span>Courses sorted by creation date (oldest first)</span>
-          </div>
-        )}
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-extrabold text-gray-900 sm:text-5xl bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600">
+            {pageTitle}
+          </h1>
+          <p className={`mt-3 text-lg ${themeClasses.textMuted} flex items-center justify-center gap-2`}>
+            <svg className="w-6 h-6 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+            {totalCount} {pageTitle.toLowerCase()} available
+            {totalPages > 1 && ` (Page ${currentPage} of ${totalPages})`}
+          </p>
+        </div>
 
         {/* Error Alert */}
         {error && (
-          <div className={`mb-6 border rounded-lg p-4 flex justify-between items-center ${themeClasses.notification.error}`}>
-            <div className="flex items-center gap-2">
-              <span>{error}</span>
-            </div>
-            <button 
-              className={`hover:opacity-70 ${themeClasses.text}`}
-              onClick={() => {
-                setLoading(true)
-                setError(null)
-                setTimeout(() => {
-                  const fetchCourses = async () => {
-                    try {
-                              const res = await axios.get<CoursesResponse>('/courses', {
-          timeout: 15000
-        })
-                      if (res.data.success) {
-                        setCourses(res.data.data)
-                        setFilteredCourses(res.data.data)
-                        setTotalRecords(res.data.pagination.totalCount)
-                        setTotalPages(res.data.pagination.totalPages)
-                        setPage(res.data.pagination.currentPage)
-                      }
-                    } catch (err: any) {
-                      console.error('Retry failed:', err)
-                      setError('Retry failed. Please try again later.')
-                    } finally {
-                      setLoading(false)
-                    }
-                  }
-                  fetchCourses()
-                }, 1000)
-              }}
+          <div className={`mb-8 p-4 ${darkMode ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-red-50 text-red-700 border-red-200'} border rounded-xl flex items-center justify-between max-w-3xl mx-auto`}>
+            <span>{error}</span>
+            <button
+              onClick={fetchCourses}
+              className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg transition-all duration-200 flex items-center"
             >
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
               Retry
             </button>
           </div>
@@ -608,15 +255,17 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         {/* Loading State */}
         {loading && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className={`${themeClasses.cardBg} rounded-lg overflow-hidden animate-pulse border ${themeClasses.border}`}>
-                <div className={`h-48 ${themeClasses.skeletonBg}`}></div>
+            {Array.from({ length: limit }).map((_, i) => (
+              <div
+                key={i}
+                className={`${themeClasses.card} rounded-xl overflow-hidden border ${themeClasses.divider} shadow-sm animate-pulse h-[480px]`}
+              >
+                <div className={`h-48 ${darkMode ? 'bg-white/5' : 'bg-gradient-to-r from-gray-200 to-gray-300'}`}></div>
                 <div className="p-6 space-y-4">
-                  <div className={`h-6 ${themeClasses.skeletonBg} rounded w-3/4`}></div>
-                  <div className={`h-4 ${themeClasses.skeletonBg} rounded w-full`}></div>
-                  <div className={`h-4 ${themeClasses.skeletonBg} rounded w-5/6`}></div>
-                  <div className={`h-4 ${themeClasses.skeletonBg} rounded w-2/3`}></div>
-                  <div className={`h-10 ${themeClasses.skeletonBg} rounded mt-6`}></div>
+                  <div className={`h-6 rounded w-3/4 ${themeClasses.progress}`}></div>
+                  <div className={`h-4 rounded w-full ${themeClasses.progress}`}></div>
+                  <div className={`h-4 rounded w-5/6 ${themeClasses.progress}`}></div>
+                  <div className={`h-10 rounded w-32 mt-4 ${themeClasses.progress}`}></div>
                 </div>
               </div>
             ))}
@@ -624,92 +273,142 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
         )}
 
         {/* Empty State */}
-        {!loading && filteredCourses.length === 0 && (
-          <div className={`${themeClasses.cardBg} rounded-xl p-12 text-center border border-dashed ${themeClasses.border}`}>
-            <AcademicCapIcon className={`h-16 w-16 mx-auto mb-4 ${themeClasses.textMuted}`} />
-            <h3 className={`text-xl font-medium mb-2 ${themeClasses.text}`}>
-              No courses found
+        {!loading && courses.length === 0 && (
+          <div className={`${themeClasses.card} rounded-xl p-8 text-center border border-dashed ${themeClasses.divider} shadow-sm max-w-lg mx-auto`}>
+            <svg className="w-16 h-16 mx-auto text-indigo-200 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+            <h3 className={`text-xl font-semibold ${themeClasses.text} mb-2`}>
+              No {pageTitle.toLowerCase()} found
             </h3>
-            <p className={`mb-6 ${themeClasses.textMuted}`}>
-              {searchTerm ? 'Try adjusting your search query' : 'There are currently no courses available'}
+            <p className={`${themeClasses.textMuted} mb-6`}>
+              There are currently no {pageTitle.toLowerCase()} available. Check back later or create your own.
             </p>
             {user && (user.role === 'instructor' || user.role === 'admin') && (
               <Link
                 to="/coursestest/add"
-                className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-md hover:from-blue-600 hover:to-purple-600 transition-all"
+                className="inline-flex items-center px-5 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all duration-200 shadow-md hover:shadow-lg"
               >
-                <PlusIcon className="h-5 w-5 mr-2" />
-                Create Your First Course
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Create {pageTitle.slice(0, -1)}
               </Link>
             )}
           </div>
         )}
 
         {/* Course Grid */}
-        {!loading && filteredCourses.length > 0 && (
+        {!loading && courses.length > 0 && (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {paginatedCourses.map((course) => (
-                <div 
+              {courses.map((course) => (
+                <div
                   key={course._id}
-                  className={`${themeClasses.cardBg} rounded-lg overflow-hidden border ${themeClasses.border} transition-all hover:shadow-lg hover:-translate-y-1`}
+                  className={`${themeClasses.card} rounded-xl overflow-hidden border ${themeClasses.divider} shadow-sm ${themeClasses.cardHover} transition-all duration-300 group flex flex-col h-[480px] hover:-translate-y-0.5`}
                 >
-                  {/* Course Image/Icon Placeholder */}
-                  <div className={`h-48 ${themeClasses.gradientBg} flex items-center justify-center`}>
-                    <AcademicCapIcon className={`h-16 w-16 opacity-50 ${darkMode ? 'text-white' : 'text-blue-600'}`} />
+                  {/* Course Image */}
+                  <div className="h-48 relative overflow-hidden">
+                    {course.coverImg ? (
+                      <img
+                        src={course.coverImg}
+                        alt={course.title || course.subject}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className={`w-full h-full ${themeClasses.gradientPanel} flex items-center justify-center`}>
+                        <svg className="w-12 h-12 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                      </div>
+                    )}
                   </div>
-                  
+
                   {/* Course Content */}
-                  <div className="p-6">
-                    <div className="flex justify-between items-start mb-4">
-                      <h3 className={`text-xl font-bold line-clamp-2 ${themeClasses.text}`}>{course.title}</h3>
-                      {user && (user.role === 'instructor' || user.role === 'admin') && (
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => handleEditCourse(course)}
-                            className={`p-1 rounded-md transition-colors ${themeClasses.hoverBg}`}
-                          >
-                            <PencilIcon className={`h-5 w-5 ${themeClasses.textAccent}`} />
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteCourse(course)}
-                            className={`p-1 rounded-md transition-colors ${themeClasses.hoverBg}`}
-                          >
-                            <TrashIcon className="h-5 w-5 text-red-400" />
-                          </button>
+                  <div className="p-6 flex-1 flex flex-col justify-between">
+                    <div>
+                      <h3 className={`text-lg font-semibold ${themeClasses.text} mb-2 line-clamp-2 group-hover:text-indigo-600 transition-colors duration-200`}>
+                        {course.title || course.subject}
+                      </h3>
+                      <p className={`text-sm ${themeClasses.textMuted} mb-4 line-clamp-2`}>{course.description}</p>
+
+                      {/* Price and Enrollment */}
+                      <div className="flex justify-between items-center mb-4">
+                        <div className={`flex items-center text-base font-medium ${themeClasses.text}`}>
+                          <svg className="w-5 h-5 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
+                          </svg>
+                          {course.price > 0 ? `₹${course.price.toLocaleString()}` : 'Free'}
+                        </div>
+                        {course.enrolledStd !== undefined && (
+                          <div className={`flex items-center text-sm ${themeClasses.textMuted}`}>
+                            <svg className="w-5 h-5 mr-1 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                            {course.enrolledStd}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Rating and Duration */}
+                      <div className="flex justify-between items-center mb-4">
+                        {course.rating !== undefined && renderStars(course.rating)}
+                        <div className={`flex items-center text-xs ${themeClasses.textMuted}`}>
+                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          {course.duration || '10+ hours'}
+                        </div>
+                      </div>
+
+                      {/* Metadata */}
+                      {user?.tenantId === 'default' && (
+                        <div className="mb-4 flex flex-wrap gap-2">
+                          {course.board && (
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${themeClasses.chipIndigo}`}>
+                              {course.board}
+                            </span>
+                          )}
+                          {course.grade && (
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${themeClasses.chipGreen}`}>
+                              Grade {course.grade}
+                            </span>
+                          )}
+                          {course.medium && course.medium.length > 0 && (
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${themeClasses.chipPurple}`}>
+                              {course.medium.join(', ')}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Progress Bar */}
+                      {course.courseProgress !== undefined && (
+                        <div className="mb-4">
+                          <div className={`flex justify-between text-xs ${themeClasses.textMuted} mb-1`}>
+                            <span>Progress</span>
+                            <span>{course.courseProgress}%</span>
+                          </div>
+                          <div className={`w-full ${themeClasses.progress} rounded-full h-1.5`}>
+                            <div
+                              className="bg-gradient-to-r from-indigo-500 to-purple-600 h-1.5 rounded-full transition-all duration-300"
+                              style={{ width: `${course.courseProgress}%` }}
+                            ></div>
+                          </div>
                         </div>
                       )}
                     </div>
-                    
-                    <p className={`line-clamp-3 mb-4 ${themeClasses.textMuted}`}>{course.description}</p>
-                    
-                    <div className="flex justify-between items-center mb-4">
-                      <span className={`text-sm ${themeClasses.textMuted}`}>
-                        Created: {formatDate(course.createdAt)}
-                      </span>
-                      <span className={`text-lg font-bold ${
-                        course.price !== undefined ? themeClasses.textAccent : 'text-green-500'
-                      }`}>
-                        {course.price !== undefined ? `$${course.price.toFixed(2)}` : 'Free'}
-                      </span>
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleEnrollAndRedirect(course._id)}
-                        className={`flex-1 py-2 px-4 rounded-md transition-all bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600`}
-                      >
-                        Explore Course
-                      </button>
-                      {user && (user.role === 'instructor' || user.role === 'admin') && (
-                        <button
-                          onClick={() => handleViewModules(course)}
-                          className={`p-2 border rounded-md transition-colors ${themeClasses.border} ${themeClasses.hoverBg}`}
-                        >
-                          <PlusIcon className="h-5 w-5" />
-                        </button>
-                      )}
-                    </div>
+
+                    {/* Explore Button */}
+                    <button
+                      onClick={() => handleEnrollAndRedirect(course._id)}
+                      className={`mt-auto w-full py-2 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 ${themeClasses.buttonPrimary} shadow-sm hover:shadow-md cursor-pointer`}
+                    >
+                      Explore {user?.tenantId === 'default' ? 'Subject' : 'Course'}
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -717,461 +416,15 @@ const Courses = ({ darkMode }: { darkMode: boolean }) => {
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex justify-center mt-8">
-                <div className="flex gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
-                    <button
-                      key={pageNum}
-                      onClick={() => handlePageChange(pageNum)}
-                      className={`w-10 h-10 rounded-md flex items-center justify-center ${
-                        page === pageNum
-                          ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white'
-                          : `${themeClasses.cardBg} ${themeClasses.textMuted} ${themeClasses.hoverBg}`
-                      }`}
-                    >
-                      {pageNum}
-                    </button>
-                  ))}
-                </div>
+              <div className="mt-12 flex justify-center">
+                <div className="flex items-center gap-2">{renderPagination()}</div>
               </div>
             )}
           </>
         )}
       </div>
-
-      {/* Modules Dialog */}
-      {openModulesDialog && (
-        <div className={`fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4 ${themeClasses.overlay}`}>
-          <div className={`${themeClasses.dialogBg} rounded-lg shadow-xl w-full max-w-2xl max-h-[85vh] overflow-hidden border ${themeClasses.dialogBorder}`}>
-            {/* Header */}
-            <div className={`p-6 border-b flex-shrink-0 ${themeClasses.dialogBorder}`}>
-              <div className="flex justify-between items-center">
-                <h2 className={`text-xl font-semibold ${themeClasses.text}`}>
-                  {selectedCourse?.title} - Modules
-                </h2>
-                <button 
-                  onClick={() => setOpenModulesDialog(false)}
-                  className={`p-2 rounded-md transition-colors ${themeClasses.hoverBg}`}
-                >
-                  <XMarkIcon className={`h-6 w-6 ${themeClasses.textMuted} hover:${themeClasses.text}`} />
-                </button>
-              </div>
-            </div>
-            
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6" style={{ maxHeight: 'calc(85vh - 180px)' }}>
-              {modulesLoading ? (
-                <div className="flex justify-center py-8">
-                  <ArrowPathIcon className="h-8 w-8 animate-spin text-blue-500" />
-                </div>
-              ) : modulesError ? (
-                <div className={`border rounded-lg p-4 mb-4 ${themeClasses.notification.error}`}>
-                  {modulesError}
-                </div>
-              ) : modules.length === 0 ? (
-                <div className={`text-center py-8 ${themeClasses.textMuted}`}>
-                  <AcademicCapIcon className="h-12 w-12 mx-auto mb-4" />
-                  <p>No modules available for this course yet.</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {modules.map((module) => (
-                    <div 
-                      key={module._id}
-                      className={`p-4 rounded-lg border ${themeClasses.border} ${themeClasses.cardBg}`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <h3 className={`font-medium ${themeClasses.text}`}>{module.title}</h3>
-                          <p className={`text-sm mt-1 ${themeClasses.textMuted}`}>{module.description}</p>
-                        </div>
-                        {user && (user.role === 'instructor' || user.role === 'admin') && (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => handleEditModule(module)}
-                              className={`p-1 rounded-md ${themeClasses.hoverBg}`}
-                            >
-                              <PencilIcon className={`h-5 w-5 ${themeClasses.textAccent}`} />
-                            </button>
-                            <button
-                              onClick={() => handleDeleteModule(module)}
-                              className={`p-1 rounded-md ${themeClasses.hoverBg}`}
-                            >
-                              <TrashIcon className="h-5 w-5 text-red-400" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div className="flex items-center mt-4 gap-4">
-                        {module.videoUrl && (
-                          <div className={`flex items-center text-sm ${themeClasses.textMuted}`}>
-                            <VideoCameraIcon className="h-4 w-4 mr-1" />
-                            <span>Video</span>
-                          </div>
-                        )}
-                        <div className={`text-sm ${themeClasses.textMuted}`}>
-                          Duration: {module.duration} mins
-                        </div>
-                        <div className={`text-sm ${themeClasses.textMuted}`}>
-                          Difficulty: {module.difficulty}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            
-            {/* Footer */}
-            <div className={`p-4 border-t flex justify-end gap-3 ${themeClasses.dialogBorder}`}>
-              {user && (user.role === 'instructor' || user.role === 'admin') && (
-                <button
-                  onClick={handleAddModule}
-                  className={`px-4 py-2 rounded-md flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600 transition-all`}
-                >
-                  <PlusIcon className="h-5 w-5" />
-                  Add Module
-                </button>
-              )}
-              <button
-                onClick={() => setOpenModulesDialog(false)}
-                className={`px-4 py-2 rounded-md border ${themeClasses.button}`}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Add Module Dialog */}
-      {openAddModuleDialog && (
-        <div className={`fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4 ${themeClasses.overlay}`}>
-          <div className={`${themeClasses.dialogBg} rounded-lg shadow-xl w-full max-w-md overflow-hidden border ${themeClasses.dialogBorder}`}>
-            <div className="p-6">
-              <h2 className={`text-xl font-semibold mb-6 ${themeClasses.text}`}>
-                Add New Module
-              </h2>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                    Title
-                  </label>
-                  <input
-                    type="text"
-                    value={newModule.title}
-                    onChange={(e) => setNewModule({...newModule, title: e.target.value})}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                    placeholder="Module title"
-                  />
-                </div>
-                
-                <div>
-                  <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                    Description
-                  </label>
-                  <textarea
-                    value={newModule.description}
-                    onChange={(e) => setNewModule({...newModule, description: e.target.value})}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                    placeholder="Module description"
-                    rows={3}
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                      Duration (minutes)
-                    </label>
-                    <input
-                      type="number"
-                      value={newModule.duration}
-                      onChange={(e) => setNewModule({...newModule, duration: e.target.value})}
-                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                      placeholder="30"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                      Difficulty
-                    </label>
-                    <select
-                      value={newModule.difficulty}
-                      onChange={(e) => setNewModule({...newModule, difficulty: e.target.value})}
-                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                    >
-                      <option value="Beginner">Beginner</option>
-                      <option value="Intermediate">Intermediate</option>
-                      <option value="Advanced">Advanced</option>
-                    </select>
-                  </div>
-                </div>
-                
-                <div>
-                  <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                    Video URL
-                  </label>
-                  <input
-                    type="text"
-                    value={newModule.videoUrl}
-                    onChange={(e) => setNewModule({...newModule, videoUrl: e.target.value})}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                    placeholder="https://example.com/video.mp4"
-                  />
-                </div>
-              </div>
-              
-              <div className="flex justify-end gap-3 mt-6">
-                <button
-                  onClick={() => setOpenAddModuleDialog(false)}
-                  className={`px-4 py-2 rounded-md border ${themeClasses.button}`}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAddModuleSubmit}
-                  disabled={!isModuleFormValid() || addingModule}
-                  className={`px-4 py-2 rounded-md flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600 transition-all ${
-                    (!isModuleFormValid() || addingModule) ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                >
-                  {addingModule ? (
-                    <>
-                      <ArrowPathIcon className="h-5 w-5 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    'Add Module'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Edit Module Dialog */}
-      {openEditModuleDialog && (
-        <div className={`fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4 ${themeClasses.overlay}`}>
-          <div className={`${themeClasses.dialogBg} rounded-lg shadow-xl w-full max-w-md overflow-hidden border ${themeClasses.dialogBorder}`}>
-            <div className="p-6">
-              <h2 className={`text-xl font-semibold mb-6 ${themeClasses.text}`}>
-                Edit Module
-              </h2>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                    Title
-                  </label>
-                  <input
-                    type="text"
-                    value={newModule.title}
-                    onChange={(e) => setNewModule({...newModule, title: e.target.value})}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                    placeholder="Module title"
-                  />
-                </div>
-                
-                <div>
-                  <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                    Description
-                  </label>
-                  <textarea
-                    value={newModule.description}
-                    onChange={(e) => setNewModule({...newModule, description: e.target.value})}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                    placeholder="Module description"
-                    rows={3}
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                      Duration (minutes)
-                    </label>
-                    <input
-                      type="number"
-                      value={newModule.duration}
-                      onChange={(e) => setNewModule({...newModule, duration: e.target.value})}
-                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                      placeholder="30"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                      Difficulty
-                    </label>
-                    <select
-                      value={newModule.difficulty}
-                      onChange={(e) => setNewModule({...newModule, difficulty: e.target.value})}
-                      className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                    >
-                      <option value="Beginner">Beginner</option>
-                      <option value="Intermediate">Intermediate</option>
-                      <option value="Advanced">Advanced</option>
-                    </select>
-                  </div>
-                </div>
-                
-                <div>
-                  <label className={`block text-sm font-medium mb-1 ${themeClasses.text}`}>
-                    Video URL
-                  </label>
-                  <input
-                    type="text"
-                    value={newModule.videoUrl}
-                    onChange={(e) => setNewModule({...newModule, videoUrl: e.target.value})}
-                    className={`w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${themeClasses.input}`}
-                    placeholder="https://example.com/video.mp4"
-                  />
-                </div>
-              </div>
-              
-              <div className="flex justify-end gap-3 mt-6">
-                <button
-                  onClick={() => setOpenEditModuleDialog(false)}
-                  className={`px-4 py-2 rounded-md border ${themeClasses.button}`}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleUpdateModule}
-                  disabled={!isModuleFormValid() || editingModule}
-                  className={`px-4 py-2 rounded-md flex items-center gap-2 bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:from-blue-600 hover:to-purple-600 transition-all ${
-                    (!isModuleFormValid() || editingModule) ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                >
-                  {editingModule ? (
-                    <>
-                      <ArrowPathIcon className="h-5 w-5 animate-spin" />
-                      Updating...
-                    </>
-                  ) : (
-                    'Update Module'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Module Confirmation */}
-      {moduleToDelete && (
-        <div className={`fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4 ${themeClasses.overlay}`}>
-          <div className={`${themeClasses.dialogBg} rounded-lg shadow-xl w-full max-w-md overflow-hidden border ${themeClasses.dialogBorder}`}>
-            <div className="p-6">
-              <h2 className={`text-xl font-semibold mb-4 ${themeClasses.text}`}>
-                Delete Module
-              </h2>
-              <p className={`mb-6 ${themeClasses.textMuted}`}>
-                Are you sure you want to delete the module "{moduleToDelete.title}"? This action cannot be undone.
-              </p>
-              
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setModuleToDelete(null)}
-                  className={`px-4 py-2 rounded-md border ${themeClasses.button}`}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmDeleteModule}
-                  disabled={deletingModule}
-                  className={`px-4 py-2 rounded-md bg-red-500 text-white hover:bg-red-600 transition-all ${
-                    deletingModule ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                >
-                  {deletingModule ? (
-                    <>
-                      <ArrowPathIcon className="h-5 w-5 animate-spin" />
-                      Deleting...
-                    </>
-                  ) : (
-                    'Delete Module'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Course Confirmation */}
-      {openDeleteDialog && (
-        <div className={`fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4 ${themeClasses.overlay}`}>
-          <div className={`${themeClasses.dialogBg} rounded-lg shadow-xl w-full max-w-md overflow-hidden border ${themeClasses.dialogBorder}`}>
-            <div className="p-6">
-              <h2 className={`text-xl font-semibold mb-4 ${themeClasses.text}`}>
-                Delete Course
-              </h2>
-              <p className={`mb-6 ${themeClasses.textMuted}`}>
-                Are you sure you want to delete the course "{courseToDelete?.title}"? This will also delete all associated modules and cannot be undone.
-              </p>
-              
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setOpenDeleteDialog(false)}
-                  className={`px-4 py-2 rounded-md border ${themeClasses.button}`}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmDeleteCourse}
-                  disabled={deleting}
-                  className={`px-4 py-2 rounded-md bg-red-500 text-white hover:bg-red-600 transition-all ${
-                    deleting ? 'opacity-50 cursor-not-allowed' : ''
-                  }`}
-                >
-                  {deleting ? (
-                    <>
-                      <ArrowPathIcon className="h-5 w-5 animate-spin" />
-                      Deleting...
-                    </>
-                  ) : (
-                    'Delete Course'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Notification */}
-      {notification.open && (
-        <div className={`fixed bottom-4 right-4 p-4 rounded-md shadow-lg border flex items-center gap-3 ${themeClasses.notification[notification.type]}`}>
-          {notification.type === 'success' && (
-            <CheckCircleIcon className="h-6 w-6" />
-          )}
-          <span>{notification.message}</span>
-          <button 
-            onClick={handleCloseNotification}
-            className="p-1 rounded-full hover:bg-white/10"
-          >
-            <XMarkIcon className="h-5 w-5" />
-          </button>
-        </div>
-      )}
-
-      {/* Floating Action Button */}
-      {user && (user.role === 'instructor' || user.role === 'admin') && (
-        <Link
-          to="/coursestest/add"
-          className="fixed bottom-8 right-8 w-14 h-14 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full flex items-center justify-center shadow-lg hover:from-blue-600 hover:to-purple-600 transition-all md:hidden"
-        >
-          <PlusIcon className="h-6 w-6" />
-        </Link>
-      )}
     </div>
-  )
-}
+  );
+};
 
-export default Courses
+export default Courses;

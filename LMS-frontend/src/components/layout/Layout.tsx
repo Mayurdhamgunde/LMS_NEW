@@ -37,7 +37,7 @@ const Layout = ({ toggleDarkMode, darkMode }: LayoutProps) => {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   
-  const { user, logout, isAuthenticated } = useContext(AuthContext)
+  const { user, logout, isAuthenticated, tenantId } = useContext(AuthContext)
   const navigate = useNavigate()
 
   // Theme-aware styling
@@ -104,6 +104,8 @@ const Layout = ({ toggleDarkMode, darkMode }: LayoutProps) => {
 
   if (!isAuthenticated) return <Outlet />
 
+  const isDefaultTenant = (tenantId || 'default') === 'default'
+
   // Navigation items configuration based on roles
   const navigationItems = [
     // Common items for all roles
@@ -140,7 +142,7 @@ const Layout = ({ toggleDarkMode, darkMode }: LayoutProps) => {
     {
       path: '/coursestest',
       icon: <AcademicCapIcon className="w-5 h-5" />,
-      label: 'Courses',
+      label: isDefaultTenant ? 'Curriculum' : 'Courses',
       roles: ['admin', 'instructor']
     },
     // {
